@@ -1,0 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 20 14.3% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 20 14.3% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 14.3% 4.1%;
+    --primary: 24 9.8% 10%;
+    --primary-foreground: 60 9.1% 97.8%;
+    --secondary: 60 4.8% 95.9%;
+    --secondary-foreground: 24 9.8% 10%;
+    --muted: 60 4.8% 95.9%;
+    --muted-foreground: 25 5.3% 44.7%;
+    --accent: 60 4.8% 95.9%;
+    --accent-foreground: 24 9.8% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --border: 20 5.9% 90%;
+    --input: 20 5.9% 90%;
+    --ring: 20 14.3% 4.1%;
+    --radius: 0.5rem;
+    --font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  }
+
+  .dark,
+  [data-theme="dark"] {
+    --background: 20 14.3% 4.1%;
+    --foreground: 60 9.1% 97.8%;
+    --card: 20 14.3% 4.1%;
+    --card-foreground: 60 9.1% 97.8%;
+    --popover: 20 14.3% 4.1%;
+    --popover-foreground: 60 9.1% 97.8%;
+    --primary: 60 9.1% 97.8%;
+    --primary-foreground: 24 9.8% 10%;
+    --secondary: 12 6.5% 15.1%;
+    --secondary-foreground: 60 9.1% 97.8%;
+    --muted: 12 6.5% 15.1%;
+    --muted-foreground: 24 5.4% 63.9%;
+    --accent: 12 6.5% 15.1%;
+    --accent-foreground: 60 9.1% 97.8%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --border: 12 6.5% 15.1%;
+    --input: 12 6.5% 15.1%;
+    --ring: 24 5.7% 82.9%;
+    --radius: 0.5rem;
+    --font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  }
+
+  [data-theme="scrapbook"] {
+    --background: 40 30% 96%;
+    --foreground: 30 15% 25%;
+    --card: 40 25% 98%;
+    --card-foreground: 30 15% 25%;
+    --popover: 40 25% 98%;
+    --popover-foreground: 30 15% 25%;
+    --primary: 10 55% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 35 40% 92%;
+    --secondary-foreground: 30 15% 25%;
+    --muted: 35 30% 92%;
+    --muted-foreground: 30 10% 45%;
+    --accent: 35 40% 92%;
+    --accent-foreground: 30 15% 25%;
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 20% 82%;
+    --input: 30 20% 82%;
+    --ring: 10 55% 55%;
+    --radius: 1rem;
+    --font-family: 'ZCOOL XiaoWei', cursive, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans";
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-family);
+  }
+}
+
+/* Scrapbook decorative enhancements */
+@layer components {
+  [data-theme="scrapbook"] .rounded-xl,
+  [data-theme="scrapbook"] .rounded-2xl,
+  [data-theme="scrapbook"] .rounded-lg,
+  [data-theme="scrapbook"] .rounded-md {
+    border-radius: calc(var(--radius) + 0.25rem);
+  }
+
+  [data-theme="scrapbook"] .bg-card,
+  [data-theme="scrapbook"] [class*="bg-card"] {
+    box-shadow: 2px 3px 0 hsl(30 20% 75% / 0.4);
+  }
+}

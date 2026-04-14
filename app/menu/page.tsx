@@ -44,7 +44,7 @@ export default function MenuPage() {
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  useMemo(() => {
+  useEffect(() => {
     getWishIds().then(setWishIds);
     getAvoidedIds().then((ids) => setAvoidIds(Array.from(ids)));
   }, []);

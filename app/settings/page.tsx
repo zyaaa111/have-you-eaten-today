@@ -39,6 +39,11 @@ export default function SettingsPage() {
     });
     setIdentity(getLocalIdentity());
     syncEngine.getSyncStatus().then((s) => setPendingCount(s.pendingCount));
+
+    const timer = setInterval(() => {
+      syncEngine.getSyncStatus().then((s) => setPendingCount(s.pendingCount));
+    }, 1500);
+    return () => clearInterval(timer);
   }, []);
 
   const handleDedupDaysChange = async (value: number) => {

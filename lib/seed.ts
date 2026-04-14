@@ -77,6 +77,8 @@ export async function seedDatabase() {
       ...t,
       id: makeTagId(t.name),
       createdAt: Date.now(),
+      syncStatus: "local",
+      version: 1,
     }));
     await db.tags.bulkAdd(tagsToAdd);
 
@@ -96,6 +98,8 @@ export async function seedDatabase() {
       tags: tagMap[m.name] || [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      syncStatus: "local",
+      version: 1,
     }));
     await db.menuItems.bulkAdd(menuItemsToAdd);
 
@@ -156,6 +160,8 @@ export async function seedDatabase() {
       ...t,
       id: makeTemplateId(t.name),
       createdAt: Date.now(),
+      syncStatus: "local",
+      version: 1,
     }));
     await db.comboTemplates.bulkAdd(templatesToAdd);
   }

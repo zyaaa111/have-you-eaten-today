@@ -37,11 +37,14 @@ export async function createMenuItem(item: Omit<MenuItem, "id" | "spaceId" | "pr
 
 export async function updateMenuItem(id: string, changes: Partial<MenuItem>): Promise<void> {
   const local = await db.menuItems.get(id);
-  await db.menuItems.update(id, {
-    ...changes,
-    syncStatus: "pending",
-    version: (local?.version ?? 1) + 1,
-  });
+  const spaceId = getCurrentSpaceId();
+  const profileId = getCurrentProfileId();
+  const patch: Partial<MenuItem> = { ...changes, syncStatus: "pending", version: (local?.version ?? 1) + 1 };
+  if (spaceId && !local?.spaceId) {
+    patch.spaceId = spaceId;
+    patch.profileId = profileId;
+  }
+  await db.menuItems.update(id, patch);
 }
 
 export async function deleteMenuItem(id: string): Promise<void> {
@@ -64,12 +67,14 @@ export async function createTag(tag: Omit<Tag, "spaceId" | "profileId" | "syncSt
 
 export async function updateTag(id: string, changes: Partial<Tag>): Promise<void> {
   const local = await db.tags.get(id);
-  await db.tags.update(id, {
-    ...changes,
-    updatedAt: Date.now(),
-    syncStatus: "pending",
-    version: (local?.version ?? 1) + 1,
-  });
+  const spaceId = getCurrentSpaceId();
+  const profileId = getCurrentProfileId();
+  const patch: Partial<Tag> = { ...changes, updatedAt: Date.now(), syncStatus: "pending", version: (local?.version ?? 1) + 1 };
+  if (spaceId && !local?.spaceId) {
+    patch.spaceId = spaceId;
+    patch.profileId = profileId;
+  }
+  await db.tags.update(id, patch);
 }
 
 export async function deleteTag(id: string): Promise<void> {
@@ -92,12 +97,14 @@ export async function createComboTemplate(template: Omit<ComboTemplate, "spaceId
 
 export async function updateComboTemplate(id: string, changes: Partial<ComboTemplate>): Promise<void> {
   const local = await db.comboTemplates.get(id);
-  await db.comboTemplates.update(id, {
-    ...changes,
-    updatedAt: Date.now(),
-    syncStatus: "pending",
-    version: (local?.version ?? 1) + 1,
-  });
+  const spaceId = getCurrentSpaceId();
+  const profileId = getCurrentProfileId();
+  const patch: Partial<ComboTemplate> = { ...changes, updatedAt: Date.now(), syncStatus: "pending", version: (local?.version ?? 1) + 1 };
+  if (spaceId && !local?.spaceId) {
+    patch.spaceId = spaceId;
+    patch.profileId = profileId;
+  }
+  await db.comboTemplates.update(id, patch);
 }
 
 export async function deleteComboTemplate(id: string): Promise<void> {

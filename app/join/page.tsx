@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ensureAnonymousUser, saveLocalIdentity, getLocalIdentity, generateInviteCode } from "@/lib/supabase";
+import { db } from "@/lib/db";
 import type { Space, Profile } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
@@ -76,6 +77,7 @@ export default function JoinPage() {
       };
 
       saveLocalIdentity({ space, profile });
+      await migrateLocalDataToSpace(space.id, userId);
       router.push("/menu");
     } catch (err) {
       setError(String(err));
@@ -138,6 +140,7 @@ export default function JoinPage() {
       };
 
       saveLocalIdentity({ space, profile });
+      await migrateLocalDataToSpace(space.id, userId);
       router.push("/menu");
     } catch (err) {
       setError(String(err));
@@ -259,4 +262,28 @@ export default function JoinPage() {
       </div>
     </div>
   );
+}
+
+async function migrateLocalDataToSpace(spaceId: string, profileId: string) {
+  await db.menuItems.toCollection().modify((item) => {
+    if (!item.spaceId) {
+      item.spaceId = spaceId;
+      item.profileId = profileId;
+      item.syncStatus = "pending";
+    }
+  });
+  await db.tags.toCollection().modify((item) => {
+    if (!item.spaceId) {
+      item.spaceId = spaceId;
+      item.profileId = profileId;
+      item.syncStatus = "pending";
+    }
+  });
+  await db.comboTemplates.toCollection().modify((item) => {
+    if (!item.spaceId) {
+      item.spaceId = spaceId;
+      item.profileId = profileId;
+      item.syncStatus = "pending";
+    }
+  });
 }

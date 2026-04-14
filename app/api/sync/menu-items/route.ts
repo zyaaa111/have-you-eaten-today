@@ -14,6 +14,9 @@ export async function POST(request: NextRequest) {
   if (!Array.isArray(items)) {
     return NextResponse.json({ error: "请求体必须是数组" }, { status: 400 });
   }
+  items.forEach((item, idx) => {
+    console.log(`[Sync Receive] menu_item[${idx}] id=${item.id} hasImage=${!!item.image_url}`);
+  });
   pushTable("menu_items", items);
   return NextResponse.json({ success: true, count: items.length });
 }

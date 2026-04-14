@@ -349,7 +349,7 @@ export default function MenuPage() {
                     </div>
                   </div>
                   {!batchMode && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
                       <button
                         type="button"
                         onClick={(e) => {

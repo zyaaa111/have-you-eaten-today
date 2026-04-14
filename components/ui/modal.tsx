@@ -53,7 +53,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
         )}
         <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4">{children}</div>
         {footer && (
-          <div className="shrink-0 px-5 py-4 border-t bg-muted/30 flex justify-end gap-2 rounded-b-2xl">
+          <div className="shrink-0 px-5 py-4 border-t bg-muted/30 flex flex-wrap justify-center sm:justify-end gap-2 rounded-b-2xl">
             {footer}
           </div>
         )}

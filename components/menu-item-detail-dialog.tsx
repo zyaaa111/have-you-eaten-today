@@ -101,14 +101,14 @@ export function MenuItemDetailDialog({
             <>
               <button
                 onClick={() => onDelete?.(item)}
-                className="rounded-md border border-destructive px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10"
+                className="flex-1 min-w-[72px] justify-center rounded-md border border-destructive px-2 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 sm:flex-initial sm:px-4 sm:py-2 sm:text-sm"
               >
                 <Trash2 className="w-4 h-4 inline-block mr-1 align-text-bottom" />
                 删除
               </button>
               <button
                 onClick={handleToggleWish}
-                className={`rounded-md border px-4 py-2 text-sm font-medium transition ${
+                className={`flex-1 min-w-[72px] justify-center rounded-md border px-2 py-2 text-xs font-medium transition sm:flex-initial sm:px-4 sm:py-2 sm:text-sm ${
                   isWished
                     ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
                     : "bg-background hover:bg-muted"
@@ -123,7 +123,7 @@ export function MenuItemDetailDialog({
                   const next = await toggleAvoidance(item.id);
                   setAvoided(next);
                 }}
-                className={`rounded-md border px-4 py-2 text-sm font-medium transition ${
+                className={`flex-1 min-w-[72px] justify-center rounded-md border px-2 py-2 text-xs font-medium transition sm:flex-initial sm:px-4 sm:py-2 sm:text-sm ${
                   avoided
                     ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
                     : "bg-background hover:bg-muted"
@@ -134,14 +134,14 @@ export function MenuItemDetailDialog({
               </button>
               <button
                 onClick={() => setShowHistory(true)}
-                className="rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+                className="flex-1 min-w-[72px] justify-center rounded-md border bg-background px-2 py-2 text-xs font-medium hover:bg-muted sm:flex-initial sm:px-4 sm:py-2 sm:text-sm"
               >
                 <History className="w-4 h-4 inline-block mr-1 align-text-bottom" />
                 历史版本
               </button>
               <button
                 onClick={() => onEdit?.(item)}
-                className="rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+                className="flex-1 min-w-[72px] justify-center rounded-md border bg-background px-2 py-2 text-xs font-medium hover:bg-muted sm:flex-initial sm:px-4 sm:py-2 sm:text-sm"
               >
                 <Pencil className="w-4 h-4 inline-block mr-1 align-text-bottom" />
                 编辑
@@ -150,7 +150,7 @@ export function MenuItemDetailDialog({
           )}
           <button
             onClick={() => onOpenChange(false)}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            className="flex-1 min-w-[72px] justify-center rounded-md bg-primary px-2 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 sm:flex-initial sm:px-4 sm:py-2 sm:text-sm"
           >
             {showHistory ? "关闭" : "关闭"}
           </button>

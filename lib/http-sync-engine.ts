@@ -70,30 +70,34 @@ export class HttpSyncEngine implements SyncService {
     const pendingMenuItems = await db.menuItems.where({ spaceId }).and((x) => x.syncStatus === "pending").toArray();
     if (pendingMenuItems.length > 0) {
       try {
+        const payload = pendingMenuItems.map((item) =>
+          toSnake({
+            id: item.id,
+            space_id: spaceId,
+            profile_id: profileId,
+            kind: item.kind,
+            name: item.name,
+            tags: item.tags,
+            weight: item.weight,
+            created_at: item.createdAt,
+            updated_at: item.updatedAt,
+            ingredients: item.ingredients,
+            steps: item.steps,
+            tips: item.tips,
+            shop: item.shop,
+            shop_address: item.shopAddress,
+            image_url: item.imageUrl,
+            version: item.version ?? 1,
+          })
+        );
+        payload.forEach((p: Record<string, unknown>, idx: number) => {
+          const hasImage = !!p.image_url;
+          const size = JSON.stringify(p).length;
+          console.log(`[Sync Push] menu_item[${idx}] id=${p.id} hasImage=${hasImage} size=${size}`);
+        });
         await api("/sync/menu-items", {
           method: "POST",
-          body: JSON.stringify(
-            pendingMenuItems.map((item) =>
-              toSnake({
-                id: item.id,
-                space_id: spaceId,
-                profile_id: profileId,
-                kind: item.kind,
-                name: item.name,
-                tags: item.tags,
-                weight: item.weight,
-                created_at: item.createdAt,
-                updated_at: item.updatedAt,
-                ingredients: item.ingredients,
-                steps: item.steps,
-                tips: item.tips,
-                shop: item.shop,
-                shop_address: item.shopAddress,
-                image_url: item.imageUrl,
-                version: item.version ?? 1,
-              })
-            )
-          ),
+          body: JSON.stringify(payload),
         });
         for (const item of pendingMenuItems) {
           await db.menuItems.update(item.id, { syncStatus: "synced" });

@@ -179,6 +179,17 @@ export default function SettingsPage() {
       </section>
 
       <section className="rounded-xl border bg-card p-5 space-y-4">
+        <h3 className="font-semibold">个人偏好</h3>
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium">我的忌口</div>
+          <button
+            onClick={() => router.push("/avoidances")}
+            className="inline-flex items-center justify-center rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+          >
+            查看与管理
+          </button>
+        </div>
+        <div className="border-t" />
         <h3 className="font-semibold">随机设置</h3>
         <p className="text-sm text-muted-foreground">
           调整默认去重天数，控制随机抽取时避免重复出现近期已选中的菜单项。

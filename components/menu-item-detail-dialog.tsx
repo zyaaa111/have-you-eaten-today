@@ -44,6 +44,7 @@ export function MenuItemDetailDialog({
   const [showHistory, setShowHistory] = useState(false);
   const [logs, setLogs] = useState<ChangeLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [historyError, setHistoryError] = useState("");
 
   useEffect(() => {
     if (open && item) {
@@ -51,17 +52,41 @@ export function MenuItemDetailDialog({
       isAvoided(item.id).then(setAvoided);
       setShowHistory(false);
       setLogs([]);
+      setHistoryError("");
     }
   }, [open, item]);
 
   useEffect(() => {
+    let active = true;
+
     if (showHistory && item) {
       setLoadingLogs(true);
-      syncEngine.fetchChangeLogsForRecord("menu_items", item.id).then((data) => {
-        setLogs(data);
-        setLoadingLogs(false);
-      });
+      setHistoryError("");
+
+      void (async () => {
+        try {
+          const data = await syncEngine.fetchChangeLogsForRecord("menu_items", item.id);
+          if (!active) return;
+          setLogs(data);
+        } catch (error) {
+          if (!active) return;
+          setLogs([]);
+          setHistoryError("历史记录加载失败，请稍后再试。");
+          console.error("Menu item history load failed:", error);
+        } finally {
+          if (active) {
+            setLoadingLogs(false);
+          }
+        }
+      })();
+    } else {
+      setLoadingLogs(false);
+      setHistoryError("");
     }
+
+    return () => {
+      active = false;
+    };
   }, [showHistory, item]);
 
   const handleToggleWish = async () => {
@@ -288,6 +313,8 @@ export function MenuItemDetailDialog({
             </div>
             {loadingLogs ? (
               <div className="text-sm text-muted-foreground">加载中…</div>
+            ) : historyError ? (
+              <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{historyError}</div>
             ) : logs.length === 0 ? (
               <div className="text-sm text-muted-foreground">暂无历史记录</div>
             ) : (

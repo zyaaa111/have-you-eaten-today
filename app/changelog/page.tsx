@@ -36,13 +36,34 @@ export default function ChangeLogPage() {
   const router = useRouter();
   const [logs, setLogs] = useState<ChangeLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | ChangeLog["operation"]> ("all");
 
   useEffect(() => {
-    syncEngine.fetchChangeLogs(100).then((data) => {
-      setLogs(data);
-      setLoading(false);
-    });
+    let active = true;
+
+    const loadLogs = async () => {
+      try {
+        const data = await syncEngine.fetchChangeLogs(100);
+        if (!active) return;
+        setLogs(data);
+        setError("");
+      } catch (error) {
+        if (!active) return;
+        setError("变更记录加载失败，请稍后重试。");
+        console.error("Change log page load failed:", error);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadLogs();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const filteredLogs = filter === "all" ? logs : logs.filter((l) => l.operation === filter);
@@ -80,6 +101,10 @@ export default function ChangeLogPage() {
 
       {loading ? (
         <div className="text-sm text-muted-foreground">加载中…</div>
+      ) : error ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 p-10 text-center text-sm text-red-600">
+          {error}
+        </div>
       ) : filteredLogs.length === 0 ? (
         <div className="rounded-xl border bg-muted/30 p-10 text-center text-sm text-muted-foreground">
           暂无变更记录

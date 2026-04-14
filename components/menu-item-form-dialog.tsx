@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
-import { MenuItem, MenuItemKind, Tag, TagType, ChangeLog, Ingredient, RecipeStep } from "@/lib/types";
-import { createMenuItem, updateMenuItem } from "@/lib/space-ops";
+import { MenuItem, MenuItemKind, Tag, TagType, Ingredient, RecipeStep } from "@/lib/types";
+import { createMenuItem, updateMenuItem, getCurrentProfileId } from "@/lib/space-ops";
 import { getWeight, setWeight as saveItemWeight } from "@/lib/weights";
 import { syncEngine } from "@/lib/sync-engine";
 import { v4 as uuidv4 } from "uuid";
@@ -73,8 +73,13 @@ export function MenuItemFormDialog({
   const draftKey = isEdit && initialData ? `hyet_draft_${initialData.id}` : "hyet_draft_new";
 
   useEffect(() => {
+    let active = true;
+
     async function loadForm() {
       if (!open) return;
+      setError("");
+      setRecentEditWarning("");
+
       // Load draft if exists
       const draftRaw = typeof window !== "undefined" ? localStorage.getItem(draftKey) : null;
       let draft: Partial<MenuItem> | null = null;
@@ -89,6 +94,7 @@ export function MenuItemFormDialog({
         try {
           personalWeight = await getWeight(initialData.id);
         } catch {}
+        if (!active) return;
         setKind(draft?.kind || initialData.kind);
         setName(draft?.name ?? initialData.name);
         setSelectedTagIds(draft?.tags ?? initialData.tags);
@@ -113,17 +119,25 @@ export function MenuItemFormDialog({
         setImageUrl(draft?.imageUrl ?? initialData.imageUrl);
 
         // Check recent edits by others
-        syncEngine.fetchChangeLogsForRecord("menu_items", initialData.id).then((logs) => {
+        try {
+          const logs = await syncEngine.fetchChangeLogsForRecord("menu_items", initialData.id);
+          if (!active) return;
+          const currentProfileId = getCurrentProfileId();
           const recent = logs.find(
-            (l) => l.operation === "update" && Date.now() - l.createdAt < 30_000
+            (l) => l.operation === "update" && Date.now() - l.createdAt < 30_000 && l.profileId !== currentProfileId
           );
           if (recent) {
             setRecentEditWarning("此菜单在近 30 秒内被他人修改过，保存时将以你的版本为准，旧版本可在历史记录中找回。");
           } else {
             setRecentEditWarning("");
           }
-        });
+        } catch (error) {
+          if (!active) return;
+          setRecentEditWarning("");
+          console.error("Menu item edit change-log fetch failed:", error);
+        }
       } else {
+        if (!active) return;
         setKind(draft?.kind || "recipe");
         setName(draft?.name ?? "");
         setSelectedTagIds(draft?.tags ?? []);
@@ -143,9 +157,12 @@ export function MenuItemFormDialog({
         setImageUrl(draft?.imageUrl ?? undefined);
         setRecentEditWarning("");
       }
-      setError("");
     }
-    loadForm();
+    void loadForm();
+
+    return () => {
+      active = false;
+    };
   }, [open, initialData, draftKey]);
 
   // Auto-save draft
@@ -164,7 +181,7 @@ export function MenuItemFormDialog({
       imageUrl,
     };
     localStorage.setItem(draftKey, JSON.stringify(payload));
-  }, [kind, name, selectedTagIds, weight, ingredients, steps, tips, shop, shopAddress, open, draftKey]);
+  }, [kind, name, selectedTagIds, weight, ingredients, steps, tips, shop, shopAddress, imageUrl, open, draftKey]);
 
   const groupedTags = useMemo(() => {
     const g: Record<TagType, Tag[]> = { cuisine: [], category: [], custom: [] };
@@ -273,7 +290,6 @@ export function MenuItemFormDialog({
       kind,
       name: name.trim(),
       tags: selectedTagIds,
-      weight,
       updatedAt: now,
       imageUrl,
     };
@@ -306,6 +322,7 @@ export function MenuItemFormDialog({
     } else {
       const newItem: Omit<MenuItem, "spaceId" | "profileId" | "syncStatus" | "version"> & { id: string } = {
         ...base,
+        weight,
         id: uuidv4(),
         createdAt: now,
       };

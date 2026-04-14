@@ -92,10 +92,18 @@ export default function TemplatesPage() {
   };
 
   useEffect(() => {
+    const pullChangesSafely = async () => {
+      try {
+        await syncEngine.pullChanges();
+      } catch (error) {
+        console.error("Templates page sync pull failed:", error);
+      }
+    };
+
     const sub = syncEngine.subscribeToChanges(() => {
-      syncEngine.pullChanges();
+      void pullChangesSafely();
     });
-    syncEngine.pullChanges();
+    void pullChangesSafely();
     return () => sub.unsubscribe();
   }, []);
 

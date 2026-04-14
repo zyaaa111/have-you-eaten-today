@@ -9,6 +9,7 @@ import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
 import { getWishIds, toggleWishId } from "@/lib/wishlist";
 import { getAvoidedIds, toggleAvoidance } from "@/lib/avoidances";
 import { deleteMenuItem } from "@/lib/space-ops";
+import { getWeightsMap } from "@/lib/weights";
 import { syncEngine } from "@/lib/sync-engine";
 import { Plus, Search, ChefHat, Bike, Tag as TagIcon, Heart, Trash2, X, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ export default function MenuPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [wishIds, setWishIds] = useState<string[]>([]);
   const [avoidIds, setAvoidIds] = useState<string[]>([]);
+  const [weightMap, setWeightMap] = useState<Record<string, number>>({});
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -48,6 +50,18 @@ export default function MenuPage() {
     getWishIds().then(setWishIds);
     getAvoidedIds().then((ids) => setAvoidIds(Array.from(ids)));
   }, []);
+
+  useEffect(() => {
+    async function loadWeights() {
+      const weights = await getWeightsMap(menuItems.map((item) => item.id));
+      setWeightMap(weights);
+    }
+    if (menuItems.length > 0) {
+      loadWeights();
+    } else {
+      setWeightMap({});
+    }
+  }, [menuItems]);
 
   const filteredItems = useMemo(() => {
     return menuItems.filter((item) => {
@@ -390,7 +404,7 @@ export default function MenuPage() {
                       >
                         <Ban className={cn("w-4 h-4", avoidIds.includes(item.id) && "fill-current")} />
                       </button>
-                      <span className="text-xs text-muted-foreground">w{item.weight}</span>
+                      <span className="text-xs text-muted-foreground">w{weightMap[item.id] ?? item.weight}</span>
                     </div>
                   )}
                 </div>

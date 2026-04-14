@@ -5,6 +5,7 @@ import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { MenuItem, MenuItemKind, Tag, TagType, ChangeLog, Ingredient, RecipeStep } from "@/lib/types";
 import { createMenuItem, updateMenuItem } from "@/lib/space-ops";
+import { getWeight, setWeight as saveItemWeight } from "@/lib/weights";
 import { syncEngine } from "@/lib/sync-engine";
 import { v4 as uuidv4 } from "uuid";
 import { Modal } from "@/components/ui/modal";
@@ -72,7 +73,8 @@ export function MenuItemFormDialog({
   const draftKey = isEdit && initialData ? `hyet_draft_${initialData.id}` : "hyet_draft_new";
 
   useEffect(() => {
-    if (open) {
+    async function loadForm() {
+      if (!open) return;
       // Load draft if exists
       const draftRaw = typeof window !== "undefined" ? localStorage.getItem(draftKey) : null;
       let draft: Partial<MenuItem> | null = null;
@@ -83,10 +85,14 @@ export function MenuItemFormDialog({
       }
 
       if (initialData) {
+        let personalWeight = initialData.weight ?? 1;
+        try {
+          personalWeight = await getWeight(initialData.id);
+        } catch {}
         setKind(draft?.kind || initialData.kind);
         setName(draft?.name ?? initialData.name);
         setSelectedTagIds(draft?.tags ?? initialData.tags);
-        setWeight(draft?.weight ?? initialData.weight);
+        setWeight(draft?.weight ?? personalWeight);
         setIngredients(
           ((draft?.ingredients as Ingredient[] | undefined)?.map((i) => ({ name: i.name, amount: i.amount || "" })))
             ?? (initialData.ingredients?.map((i) => ({ name: i.name, amount: i.amount || "" })) || [])
@@ -139,6 +145,7 @@ export function MenuItemFormDialog({
       }
       setError("");
     }
+    loadForm();
   }, [open, initialData, draftKey]);
 
   // Auto-save draft
@@ -295,6 +302,7 @@ export function MenuItemFormDialog({
         updatePayload.tips = undefined;
       }
       await updateMenuItem(initialData.id, updatePayload);
+      await saveItemWeight(initialData.id, weight);
     } else {
       const newItem: Omit<MenuItem, "spaceId" | "profileId" | "syncStatus" | "version"> & { id: string } = {
         ...base,
@@ -318,6 +326,7 @@ export function MenuItemFormDialog({
         newItem.shopAddress = shopAddress.trim() || undefined;
       }
       await createMenuItem(newItem);
+      await saveItemWeight(newItem.id, weight);
     }
 
     localStorage.removeItem(draftKey);

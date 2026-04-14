@@ -12,7 +12,14 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`HTTP ${res.status}: ${text}`);
+    const isHtml = text.trim().startsWith("<") || text.includes("<!DOCTYPE");
+    if (res.status === 404 && isHtml) {
+      throw new Error(
+        `HTTP 404: 服务端 API 不存在 (${path})。请确认服务器已执行 npm run build 并重启。`
+      );
+    }
+    const preview = text.length > 300 ? text.slice(0, 300) + "..." : text;
+    throw new Error(`HTTP ${res.status}: ${preview}`);
   }
   return res.json() as Promise<T>;
 }

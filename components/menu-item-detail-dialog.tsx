@@ -5,8 +5,9 @@ import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { MenuItem, TagType, ChangeLog } from "@/lib/types";
 import { Modal } from "@/components/ui/modal";
-import { ChefHat, Bike, Pencil, Trash2, Heart, History, RotateCcw, X } from "lucide-react";
+import { ChefHat, Bike, Pencil, Trash2, Heart, History, RotateCcw, X, Ban } from "lucide-react";
 import { getWishIds, toggleWishId } from "@/lib/wishlist";
+import { isAvoided, toggleAvoidance } from "@/lib/avoidances";
 import { syncEngine } from "@/lib/sync-engine";
 import { updateMenuItem } from "@/lib/space-ops";
 
@@ -39,6 +40,7 @@ export function MenuItemDetailDialog({
 }: MenuItemDetailDialogProps) {
   const allTags = useLiveQuery(() => db.tags.toArray(), []) || [];
   const [isWished, setIsWished] = useState(false);
+  const [avoided, setAvoided] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [logs, setLogs] = useState<ChangeLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -46,6 +48,7 @@ export function MenuItemDetailDialog({
   useEffect(() => {
     if (open && item) {
       getWishIds().then((ids) => setIsWished(ids.includes(item.id)));
+      isAvoided(item.id).then(setAvoided);
       setShowHistory(false);
       setLogs([]);
     }
@@ -115,6 +118,21 @@ export function MenuItemDetailDialog({
                 想吃
               </button>
               <button
+                onClick={async () => {
+                  if (!item) return;
+                  const next = await toggleAvoidance(item.id);
+                  setAvoided(next);
+                }}
+                className={`rounded-md border px-4 py-2 text-sm font-medium transition ${
+                  avoided
+                    ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    : "bg-background hover:bg-muted"
+                }`}
+              >
+                <Ban className={`w-4 h-4 inline-block mr-1 align-text-bottom ${avoided ? "fill-current" : ""}`} />
+                {avoided ? "取消忌口" : "忌口"}
+              </button>
+              <button
                 onClick={() => setShowHistory(true)}
                 className="rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
               >
@@ -143,11 +161,11 @@ export function MenuItemDetailDialog({
         {!showHistory ? (
           <>
             {item.imageUrl && item.kind === "recipe" && (
-              <div className="-mx-5 -mt-5 mb-2 h-48 overflow-hidden">
+              <div className="-mx-5 -mt-5 mb-2 overflow-hidden">
                 <img
                   src={item.imageUrl}
                   alt={item.name}
-                  className="h-full w-full object-cover"
+                  className="w-full max-h-80 object-contain"
                 />
               </div>
             )}

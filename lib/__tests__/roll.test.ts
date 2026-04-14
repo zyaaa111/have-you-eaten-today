@@ -4,6 +4,7 @@ import { seedDatabase } from "@/lib/seed";
 import { rollSingle, rollCombo, clearRollHistory } from "@/lib/roll";
 import { saveWishIds } from "@/lib/wishlist";
 import { saveSetting } from "@/lib/settings";
+import { addAvoidance } from "@/lib/avoidances";
 import { v4 as uuidv4 } from "uuid";
 
 describe("Roll Engine", () => {
@@ -131,5 +132,52 @@ describe("Roll Engine", () => {
     // just because of dedup; it should behave normally.
 
     await saveSetting("dedupEnabled", true);
+  });
+
+  it("rollSingle excludes avoided items", async () => {
+    await clearRollHistory();
+    const allItems = await db.menuItems.toArray();
+    if (allItems.length < 2) return;
+
+    const avoidedId = allItems[0].id;
+    await addAvoidance(avoidedId);
+
+    let avoidedHits = 0;
+    const trials = 30;
+    for (let i = 0; i < trials; i++) {
+      await clearRollHistory();
+      const r = await rollSingle({});
+      if (r && r.items[0].menuItemId === avoidedId) avoidedHits++;
+    }
+    expect(avoidedHits).toBe(0);
+  });
+
+  it("rollCombo excludes avoided items", async () => {
+    await clearRollHistory();
+    const template = await db.comboTemplates.where("name").startsWith("1主食 + 1荤菜 + 1素菜").first();
+    expect(template).toBeDefined();
+
+    const tags = await db.tags.toArray();
+    const stapleTag = tags.find((t) => t.name === "主食")!;
+    const meatTag = tags.find((t) => t.name === "荤菜")!;
+    const vegTag = tags.find((t) => t.name === "素菜")!;
+
+    const riceId = uuidv4();
+    const fishId = uuidv4();
+    const cucumberId = uuidv4();
+
+    await db.menuItems.bulkAdd([
+      { id: riceId, kind: "recipe", name: "米饭", tags: [stapleTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
+      { id: fishId, kind: "recipe", name: "清蒸鱼", tags: [meatTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
+      { id: cucumberId, kind: "recipe", name: "凉拌黄瓜", tags: [vegTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
+    ]);
+
+    // Avoid the only meat item
+    await addAvoidance(fishId);
+
+    const result = await rollCombo({ templateId: template!.id });
+    expect(result).not.toBeNull();
+    const ids = result!.items.map((i) => i.menuItemId);
+    expect(ids).not.toContain(fishId);
   });
 });

@@ -89,6 +89,7 @@ export class HttpSyncEngine implements SyncService {
                 tips: item.tips,
                 shop: item.shop,
                 shop_address: item.shopAddress,
+                image_url: item.imageUrl,
                 version: item.version ?? 1,
               })
             )

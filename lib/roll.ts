@@ -3,6 +3,7 @@ import { db } from "./db";
 import { MenuItem, MenuItemKind, RolledItem, ComboTemplate } from "./types";
 import { getDefaultDedupDays, getDedupEnabled } from "./settings";
 import { getWishIds } from "./wishlist";
+import { getAvoidedIds } from "./avoidances";
 
 export interface SingleRollOptions {
   kind?: MenuItemKind;
@@ -81,11 +82,12 @@ export async function rollSingle(opts: SingleRollOptions): Promise<RollResult | 
   const dedupEnabled = await getDedupEnabled();
   const dedupDays = opts.dedupDays ?? await getDefaultDedupDays();
   const dedupIds = (!dedupEnabled || opts.ignoreDedup) ? new Set<string>() : await getRecentRolledIds(dedupDays);
-  let pool = candidates.filter((i) => !dedupIds.has(i.id));
+  const avoidedIds = await getAvoidedIds();
+  let pool = candidates.filter((i) => !dedupIds.has(i.id) && !avoidedIds.has(i.id));
 
   let ignoredDedup = false;
   if (pool.length === 0 && !opts.ignoreDedup) {
-    pool = candidates;
+    pool = candidates.filter((i) => !avoidedIds.has(i.id));
     ignoredDedup = true;
   }
 
@@ -131,6 +133,7 @@ export async function rollCombo(opts: ComboRollOptions): Promise<RollResult | nu
   const dedupEnabled = await getDedupEnabled();
   const dedupDays = opts.dedupDays ?? await getDefaultDedupDays();
   const dedupIds = (!dedupEnabled || opts.ignoreDedup) ? new Set<string>() : await getRecentRolledIds(dedupDays);
+  const avoidedIds = await getAvoidedIds();
   const selectedIds = new Set<string>();
   const rolledItems: RolledItem[] = [];
   let didFallback = false;
@@ -149,11 +152,11 @@ export async function rollCombo(opts: ComboRollOptions): Promise<RollResult | nu
       });
 
     let candidates = applyRuleFilters(allItems).filter(
-      (i) => !selectedIds.has(i.id) && !dedupIds.has(i.id)
+      (i) => !selectedIds.has(i.id) && !dedupIds.has(i.id) && !avoidedIds.has(i.id)
     );
 
     if (candidates.length < rule.count) {
-      candidates = applyRuleFilters(allItems).filter((i) => !selectedIds.has(i.id));
+      candidates = applyRuleFilters(allItems).filter((i) => !selectedIds.has(i.id) && !avoidedIds.has(i.id));
       if (candidates.length > 0) didFallback = true;
     }
 

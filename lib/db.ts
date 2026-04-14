@@ -7,7 +7,7 @@ import {
 } from "./types";
 
 const DB_NAME = "HaveYouEatenTodayDB";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export interface PendingDeletion {
   id?: number;
@@ -32,6 +32,7 @@ class AppDatabase extends Dexie {
   settings!: Table<{ key: string; value: unknown }, string>;
   pendingDeletions!: Table<PendingDeletion, number>;
   tagMappings!: Table<TagMapping, number>;
+  avoidances!: Table<{ id?: number; menuItemId: string }, number>;
 
   constructor() {
     super(DB_NAME);
@@ -111,6 +112,17 @@ class AppDatabase extends Dexie {
       pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
       tagMappings: "++id, aliasId, canonicalId, spaceId",
     });
+
+    this.version(6).stores({
+      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+      avoidances: "++id, menuItemId",
+    });
   }
 }
 
@@ -124,4 +136,5 @@ export async function resetDatabase() {
   await db.settings.clear();
   await db.pendingDeletions.clear();
   await db.tagMappings.clear();
+  await db.avoidances.clear();
 }

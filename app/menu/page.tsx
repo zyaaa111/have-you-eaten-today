@@ -7,9 +7,10 @@ import { MenuItem, MenuItemKind, TagType } from "@/lib/types";
 import { MenuItemFormDialog } from "@/components/menu-item-form-dialog";
 import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
 import { getWishIds, toggleWishId } from "@/lib/wishlist";
+import { getAvoidedIds, toggleAvoidance } from "@/lib/avoidances";
 import { deleteMenuItem } from "@/lib/space-ops";
 import { syncEngine } from "@/lib/sync-engine";
-import { Plus, Search, ChefHat, Bike, Tag as TagIcon, Heart, Trash2, X } from "lucide-react";
+import { Plus, Search, ChefHat, Bike, Tag as TagIcon, Heart, Trash2, X, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 
@@ -39,11 +40,13 @@ export default function MenuPage() {
   const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [wishIds, setWishIds] = useState<string[]>([]);
+  const [avoidIds, setAvoidIds] = useState<string[]>([]);
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useMemo(() => {
     getWishIds().then(setWishIds);
+    getAvoidedIds().then((ids) => setAvoidIds(Array.from(ids)));
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -308,7 +311,7 @@ export default function MenuPage() {
                 )}
               >
                 {item.imageUrl && item.kind === "recipe" && (
-                  <div className="-mx-4 -mt-4 mb-2 h-32 overflow-hidden rounded-t-xl">
+                  <div className="-mx-4 -mt-4 mb-2 aspect-[4/3] overflow-hidden rounded-t-xl">
                     <img
                       src={item.imageUrl}
                       alt={item.name}
@@ -366,6 +369,26 @@ export default function MenuPage() {
                         title={wishIds.includes(item.id) ? "取消想吃" : "标记为想吃"}
                       >
                         <Heart className={cn("w-4 h-4", wishIds.includes(item.id) && "fill-current")} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleAvoidance(item.id).then((isAvoided) => {
+                            setAvoidIds((prev) =>
+                              isAvoided ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                            );
+                          });
+                        }}
+                        className={cn(
+                          "rounded-full p-1.5 transition",
+                          avoidIds.includes(item.id)
+                            ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                            : "text-muted-foreground hover:bg-muted"
+                        )}
+                        title={avoidIds.includes(item.id) ? "取消忌口" : "标记为忌口"}
+                      >
+                        <Ban className={cn("w-4 h-4", avoidIds.includes(item.id) && "fill-current")} />
                       </button>
                       <span className="text-xs text-muted-foreground">w{item.weight}</span>
                     </div>

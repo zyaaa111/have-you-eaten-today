@@ -456,7 +456,7 @@ export function MenuItemFormDialog({
                 <div key={type} className="flex flex-wrap gap-2">
                   {groupedTags[type].length > 0 && (
                     <>
-                      <span className="text-xs text-muted-foreground py-1 w-full">
+                      <span className="text-xs text-muted-foreground py-1 w-full sm:w-auto sm:mr-2">
                         {typeLabels[type]}
                       </span>
                       {groupedTags[type].map((tag) => {
@@ -507,26 +507,28 @@ export function MenuItemFormDialog({
               </div>
               <div className="space-y-2">
                 {ingredients.map((ing, idx) => (
-                  <div key={idx} className="flex gap-2 items-center rounded-xl border bg-muted/30 p-3">
+                  <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-xl border bg-muted/30 p-3 overflow-hidden">
                     <input
                       value={ing.name}
                       onChange={(e) => handleUpdateIngredient(idx, "name", e.target.value)}
                       placeholder="材料"
-                      className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      className="w-full sm:flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                     />
-                    <input
-                      value={ing.amount}
-                      onChange={(e) => handleUpdateIngredient(idx, "amount", e.target.value)}
-                      placeholder="用量"
-                      className="w-24 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveIngredient(idx)}
-                      className="h-9 w-9 inline-flex items-center justify-center rounded-md border text-muted-foreground hover:bg-muted"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-2 justify-end">
+                      <input
+                        value={ing.amount}
+                        onChange={(e) => handleUpdateIngredient(idx, "amount", e.target.value)}
+                        placeholder="用量"
+                        className="w-24 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveIngredient(idx)}
+                        className="h-9 w-9 inline-flex items-center justify-center rounded-md border text-muted-foreground hover:bg-muted shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {ingredients.length === 0 && (
@@ -557,53 +559,57 @@ export function MenuItemFormDialog({
                     onDrop={handleDrop(idx)}
                     onDragEnd={handleDragEnd}
                     className={cn(
-                      "flex gap-2 items-start rounded-xl border bg-muted/30 p-3 transition",
+                      "flex flex-col sm:flex-row sm:items-start gap-2 rounded-xl border bg-muted/30 p-3 transition overflow-hidden",
                       draggedIdx === idx && "opacity-50 bg-muted",
                       dragOverIdx === idx && draggedIdx !== idx && "bg-primary/10 border-primary"
                     )}
                   >
-                    <span className="mt-2.5 w-6 text-xs text-muted-foreground text-center cursor-move select-none">
-                      {idx + 1}
-                    </span>
-                    <textarea
-                      value={step.description}
-                      onChange={(e) => handleUpdateStep(idx, "description", e.target.value)}
-                      placeholder={`步骤 ${idx + 1}`}
-                      rows={2}
-                      className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
-                    />
-                    <input
-                      type="number"
-                      value={step.durationMinutes ?? ""}
-                      onChange={(e) => handleUpdateStep(idx, "durationMinutes", e.target.value)}
-                      placeholder="分钟"
-                      className="w-20 rounded-md border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                    <div className="flex flex-col gap-1">
+                    <div className="flex gap-2 items-start w-full">
+                      <span className="mt-2.5 w-6 text-xs text-muted-foreground text-center cursor-move select-none shrink-0">
+                        {idx + 1}
+                      </span>
+                      <textarea
+                        value={step.description}
+                        onChange={(e) => handleUpdateStep(idx, "description", e.target.value)}
+                        placeholder={`步骤 ${idx + 1}`}
+                        rows={2}
+                        className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <input
+                        type="number"
+                        value={step.durationMinutes ?? ""}
+                        onChange={(e) => handleUpdateStep(idx, "durationMinutes", e.target.value)}
+                        placeholder="分钟"
+                        className="w-20 rounded-md border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={() => moveStep(idx, -1)}
+                          disabled={idx === 0}
+                          className="rounded-md border px-1.5 py-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveStep(idx, 1)}
+                          disabled={idx === steps.length - 1}
+                          className="rounded-md border px-1.5 py-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => moveStep(idx, -1)}
-                        disabled={idx === 0}
-                        className="rounded-md border px-1.5 py-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        onClick={() => handleRemoveStep(idx)}
+                        className="h-9 w-9 inline-flex items-center justify-center rounded-md border text-muted-foreground hover:bg-muted shrink-0"
                       >
-                        <ArrowUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveStep(idx, 1)}
-                        disabled={idx === steps.length - 1}
-                        className="rounded-md border px-1.5 py-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                      >
-                        <ArrowDown className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveStep(idx)}
-                      className="h-9 w-9 inline-flex items-center justify-center rounded-md border text-muted-foreground hover:bg-muted"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
                 ))}
                 {steps.length === 0 && (

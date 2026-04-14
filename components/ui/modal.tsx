@@ -28,7 +28,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/50"
         onClick={onClose}
@@ -36,7 +36,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
       />
       <div
         className={cn(
-          "relative z-10 flex flex-col w-full max-w-2xl max-h-[85dvh] rounded-2xl border bg-background shadow-lg",
+          "relative z-10 flex flex-col w-full max-w-2xl max-h-[80dvh] sm:max-h-[85dvh] rounded-2xl border bg-background shadow-lg",
           className
         )}
       >
@@ -53,7 +53,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
         )}
         <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4">{children}</div>
         {footer && (
-          <div className="shrink-0 px-5 py-4 border-t bg-muted/30 flex flex-wrap justify-center sm:justify-end gap-2 rounded-b-2xl">
+          <div className="shrink-0 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t bg-muted/30 flex flex-wrap justify-center sm:justify-end gap-2 rounded-b-2xl">
             {footer}
           </div>
         )}

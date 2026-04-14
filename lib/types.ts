@@ -133,6 +133,12 @@ export interface ChangeLog {
   createdAt: number;
 }
 
+export interface PersonalWeight {
+  id?: number;
+  menuItemId: string;
+  weight: number;
+}
+
 export interface AppExport {
   schemaVersion: string;
   exportedAt: number;
@@ -142,5 +148,6 @@ export interface AppExport {
     menuItems: MenuItem[];
     comboTemplates: ComboTemplate[];
     rollHistory: RollHistory[];
+    personalWeights?: PersonalWeight[];
   };
 }

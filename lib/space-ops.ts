@@ -50,6 +50,7 @@ export async function updateMenuItem(id: string, changes: Partial<MenuItem>): Pr
 export async function deleteMenuItem(id: string): Promise<void> {
   const spaceId = getCurrentSpaceId();
   await db.menuItems.delete(id);
+  await db.personalWeights.where({ menuItemId: id }).delete();
   if (spaceId) {
     await db.pendingDeletions.add({
       tableName: "menu_items",

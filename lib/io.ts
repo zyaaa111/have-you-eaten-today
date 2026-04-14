@@ -5,11 +5,12 @@ const CURRENT_SCHEMA_VERSION = "1.0.0";
 const CURRENT_APP_VERSION = "0.1.0";
 
 export async function exportData(): Promise<AppExport> {
-  const [tags, menuItems, comboTemplates, rollHistory] = await Promise.all([
+  const [tags, menuItems, comboTemplates, rollHistory, personalWeights] = await Promise.all([
     db.tags.toArray(),
     db.menuItems.toArray(),
     db.comboTemplates.toArray(),
     db.rollHistory.toArray(),
+    db.personalWeights.toArray(),
   ]);
 
   return {
@@ -21,6 +22,7 @@ export async function exportData(): Promise<AppExport> {
       menuItems,
       comboTemplates,
       rollHistory,
+      personalWeights,
     },
   };
 }
@@ -64,6 +66,9 @@ export async function importData(file: File): Promise<{ success: boolean; error?
     await db.menuItems.bulkAdd(parsed.data.menuItems);
     await db.comboTemplates.bulkAdd(parsed.data.comboTemplates);
     await db.rollHistory.bulkAdd(parsed.data.rollHistory);
+    if (parsed.data.personalWeights && Array.isArray(parsed.data.personalWeights)) {
+      await db.personalWeights.bulkAdd(parsed.data.personalWeights);
+    }
 
     return { success: true };
   } catch (e) {

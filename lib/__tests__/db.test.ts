@@ -15,6 +15,7 @@ describe("Database", () => {
     expect(await db.rollHistory.count()).toBe(0);
     expect(await db.comboTemplates.count()).toBe(0);
     expect(await db.settings.count()).toBe(0);
+    expect(await db.personalWeights.count()).toBe(0);
   });
 
   it("should seed default tags, menu items and templates", async () => {

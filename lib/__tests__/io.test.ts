@@ -18,6 +18,7 @@ describe("Import/Export", () => {
     expect(Array.isArray(data.data.menuItems)).toBe(true);
     expect(Array.isArray(data.data.comboTemplates)).toBe(true);
     expect(Array.isArray(data.data.rollHistory)).toBe(true);
+    expect(Array.isArray(data.data.personalWeights)).toBe(true);
   });
 
   it("should fail import for invalid JSON", async () => {
@@ -54,5 +55,8 @@ describe("Import/Export", () => {
     expect(afterTags.length).toBe(before.data.tags.length);
     expect(afterMenuItems.length).toBe(before.data.menuItems.length);
     expect(afterTemplates.length).toBe(before.data.comboTemplates.length);
+
+    const afterWeights = await db.personalWeights.toArray();
+    expect(afterWeights.length).toBe(before.data.personalWeights?.length ?? 0);
   });
 });

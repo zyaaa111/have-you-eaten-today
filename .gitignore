@@ -33,8 +33,11 @@ Thumbs.db
 # IDE
 .idea
 .vscode
+.claude/
+CLAUDE.md
 *.swp
 *.swo
+*.tsbuildinfo
 
 # Testing
 coverage

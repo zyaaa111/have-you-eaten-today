@@ -4,10 +4,11 @@ import {
   Tag,
   RollHistory,
   ComboTemplate,
+  PersonalWeight,
 } from "./types";
 
 const DB_NAME = "HaveYouEatenTodayDB";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 export interface PendingDeletion {
   id?: number;
@@ -33,6 +34,7 @@ class AppDatabase extends Dexie {
   pendingDeletions!: Table<PendingDeletion, number>;
   tagMappings!: Table<TagMapping, number>;
   avoidances!: Table<{ id?: number; menuItemId: string }, number>;
+  personalWeights!: Table<PersonalWeight, number>;
 
   constructor() {
     super(DB_NAME);
@@ -123,6 +125,26 @@ class AppDatabase extends Dexie {
       tagMappings: "++id, aliasId, canonicalId, spaceId",
       avoidances: "++id, menuItemId",
     });
+
+    this.version(7).stores({
+      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+      avoidances: "++id, menuItemId",
+      personalWeights: "++id, menuItemId",
+    }).upgrade(async (tx) => {
+      const items = await tx.table("menuItems").toArray() as MenuItem[];
+      const weightsToAdd: PersonalWeight[] = items
+        .filter((item) => typeof item.weight === "number" && item.weight !== 1)
+        .map((item) => ({ menuItemId: item.id, weight: item.weight }));
+      if (weightsToAdd.length > 0) {
+        await tx.table("personalWeights").bulkAdd(weightsToAdd);
+      }
+    });
   }
 }
 
@@ -137,4 +159,5 @@ export async function resetDatabase() {
   await db.pendingDeletions.clear();
   await db.tagMappings.clear();
   await db.avoidances.clear();
+  await db.personalWeights.clear();
 }

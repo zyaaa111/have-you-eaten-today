@@ -5,6 +5,7 @@ import { rollSingle, rollCombo, clearRollHistory } from "@/lib/roll";
 import { saveWishIds } from "@/lib/wishlist";
 import { saveSetting } from "@/lib/settings";
 import { addAvoidance } from "@/lib/avoidances";
+import { setWeight } from "@/lib/weights";
 import { v4 as uuidv4 } from "uuid";
 
 describe("Roll Engine", () => {
@@ -179,5 +180,32 @@ describe("Roll Engine", () => {
     expect(result).not.toBeNull();
     const ids = result!.items.map((i) => i.menuItemId);
     expect(ids).not.toContain(fishId);
+  });
+
+  it("rollSingle uses personalWeights over menuItems.weight", async () => {
+    await clearRollHistory();
+    const allItems = await db.menuItems.toArray();
+    if (allItems.length < 2) return;
+
+    const targetId = allItems[0].id;
+    // Set baseline low weight on item, high personal weight
+    await db.menuItems.update(targetId, { weight: 1 });
+    await setWeight(targetId, 20);
+
+    // Ensure other items also have weight 1
+    for (const item of allItems.slice(1)) {
+      await db.menuItems.update(item.id, { weight: 1 });
+    }
+
+    let targetHits = 0;
+    const trials = 30;
+    for (let i = 0; i < trials; i++) {
+      await clearRollHistory();
+      const r = await rollSingle({});
+      if (r && r.items[0].menuItemId === targetId) targetHits++;
+    }
+
+    const baseline = trials / allItems.length;
+    expect(targetHits).toBeGreaterThan(baseline);
   });
 });

@@ -4,6 +4,7 @@ import { MenuItem, MenuItemKind, RolledItem, ComboTemplate } from "./types";
 import { getDefaultDedupDays, getDedupEnabled } from "./settings";
 import { getWishIds } from "./wishlist";
 import { getAvoidedIds } from "./avoidances";
+import { getWeightsMap } from "./weights";
 
 export interface SingleRollOptions {
   kind?: MenuItemKind;
@@ -93,9 +94,10 @@ export async function rollSingle(opts: SingleRollOptions): Promise<RollResult | 
 
   const wishIds = await getWishIds();
   const wishBoost = 3;
+  const weightsMap = await getWeightsMap(pool.map((i) => i.id));
   const boostedPool = pool.map((item) => ({
     ...item,
-    weight: item.weight * (wishIds.includes(item.id) ? wishBoost : 1),
+    weight: weightsMap[item.id] * (wishIds.includes(item.id) ? wishBoost : 1),
   }));
 
   const picked = weightedPick(boostedPool);
@@ -139,6 +141,7 @@ export async function rollCombo(opts: ComboRollOptions): Promise<RollResult | nu
   let didFallback = false;
   const wishIds = await getWishIds();
   const wishBoost = 3;
+  const allWeightsMap = await getWeightsMap(allItems.map((i) => i.id));
 
   for (const rule of template.rules) {
     const applyRuleFilters = (pool: MenuItem[]) =>
@@ -162,7 +165,7 @@ export async function rollCombo(opts: ComboRollOptions): Promise<RollResult | nu
 
     let boostedCandidates = candidates.map((item) => ({
       ...item,
-      weight: item.weight * (wishIds.includes(item.id) ? wishBoost : 1),
+      weight: allWeightsMap[item.id] * (wishIds.includes(item.id) ? wishBoost : 1),
     }));
 
     const count = Math.min(rule.count, boostedCandidates.length);

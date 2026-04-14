@@ -17,6 +17,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ImageUploader } from "@/components/image-uploader";
 
 interface MenuItemFormDialogProps {
   open: boolean;
@@ -62,6 +63,7 @@ export function MenuItemFormDialog({
   const [tips, setTips] = useState("");
   const [shop, setShop] = useState("");
   const [shopAddress, setShopAddress] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const [error, setError] = useState("");
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -102,6 +104,7 @@ export function MenuItemFormDialog({
         setTips(draft?.tips ?? (initialData.tips || ""));
         setShop(draft?.shop ?? (initialData.shop || ""));
         setShopAddress(draft?.shopAddress ?? (initialData.shopAddress || ""));
+        setImageUrl(draft?.imageUrl ?? initialData.imageUrl);
 
         // Check recent edits by others
         syncEngine.fetchChangeLogsForRecord("menu_items", initialData.id).then((logs) => {
@@ -131,6 +134,7 @@ export function MenuItemFormDialog({
         setTips(draft?.tips ?? "");
         setShop(draft?.shop ?? "");
         setShopAddress(draft?.shopAddress ?? "");
+        setImageUrl(draft?.imageUrl ?? undefined);
         setRecentEditWarning("");
       }
       setError("");
@@ -150,6 +154,7 @@ export function MenuItemFormDialog({
       tips: tips.trim() || undefined,
       shop: shop.trim() || undefined,
       shopAddress: shopAddress.trim() || undefined,
+      imageUrl,
     };
     localStorage.setItem(draftKey, JSON.stringify(payload));
   }, [kind, name, selectedTagIds, weight, ingredients, steps, tips, shop, shopAddress, open, draftKey]);
@@ -263,6 +268,7 @@ export function MenuItemFormDialog({
       tags: selectedTagIds,
       weight,
       updatedAt: now,
+      imageUrl,
     };
 
     if (isEdit && initialData) {
@@ -482,6 +488,11 @@ export function MenuItemFormDialog({
         {/* Recipe fields */}
         {kind === "recipe" && (
           <div className="space-y-4 border-t pt-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">菜谱图片</label>
+              <ImageUploader value={imageUrl} onChange={setImageUrl} />
+            </div>
+
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium">材料清单</label>

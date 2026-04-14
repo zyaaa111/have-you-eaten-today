@@ -142,6 +142,15 @@ export function MenuItemDetailDialog({
       <div className="space-y-5">
         {!showHistory ? (
           <>
+            {item.imageUrl && item.kind === "recipe" && (
+              <div className="-mx-5 -mt-5 mb-2 h-48 overflow-hidden">
+                <img
+                  src={item.imageUrl}
+                  alt={item.name}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span
                 className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium border ${

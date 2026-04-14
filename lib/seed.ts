@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from "uuid";
 import { db } from "./db";
 import { Tag, MenuItem, ComboTemplate } from "./types";
 
@@ -61,12 +60,22 @@ const defaultMenuItems: Omit<MenuItem, "id" | "createdAt" | "updatedAt">[] = [
   },
 ];
 
+function makeTagId(name: string) {
+  return `seed-tag-${name}`;
+}
+function makeMenuItemId(kind: string, name: string) {
+  return `seed-item-${kind}-${name}`;
+}
+function makeTemplateId(name: string) {
+  return `seed-template-${name}`;
+}
+
 export async function seedDatabase() {
   const tagCount = await db.tags.count();
   if (tagCount === 0) {
     const tagsToAdd: Tag[] = defaultTags.map((t) => ({
       ...t,
-      id: uuidv4(),
+      id: makeTagId(t.name),
       createdAt: Date.now(),
     }));
     await db.tags.bulkAdd(tagsToAdd);
@@ -83,7 +92,7 @@ export async function seedDatabase() {
 
     const menuItemsToAdd: MenuItem[] = defaultMenuItems.map((m) => ({
       ...m,
-      id: uuidv4(),
+      id: makeMenuItemId(m.kind, m.name),
       tags: tagMap[m.name] || [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -145,7 +154,7 @@ export async function seedDatabase() {
 
     const templatesToAdd: ComboTemplate[] = defaultTemplates.map((t) => ({
       ...t,
-      id: uuidv4(),
+      id: makeTemplateId(t.name),
       createdAt: Date.now(),
     }));
     await db.comboTemplates.bulkAdd(templatesToAdd);

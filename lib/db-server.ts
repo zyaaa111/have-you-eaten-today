@@ -42,6 +42,7 @@ db.exec(`
     tips TEXT,
     shop TEXT,
     shop_address TEXT,
+    image_url TEXT,
     version INTEGER NOT NULL DEFAULT 1
   );
 
@@ -85,6 +86,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_change_logs_record ON change_logs(table_name, record_id);
 `);
 
+// Migration: add image_url column to existing databases
+const menuItemsColumns = db.prepare("PRAGMA table_info(menu_items)").all() as { name: string }[];
+if (!menuItemsColumns.some((c) => c.name === "image_url")) {
+  db.exec(`ALTER TABLE menu_items ADD COLUMN image_url TEXT`);
+  // Recreate triggers to include imageUrl
+  db.exec(`DROP TRIGGER IF EXISTS trg_menu_items_insert`);
+  db.exec(`DROP TRIGGER IF EXISTS trg_menu_items_update`);
+  db.exec(`DROP TRIGGER IF EXISTS trg_menu_items_delete`);
+}
+
 // Triggers for menu_items
 function createTrigger(table: string) {
   const beforeInsert = `
@@ -115,6 +126,7 @@ function createTrigger(table: string) {
           'tips', NEW.tips,
           'shop', NEW.shop,
           'shopAddress', NEW.shop_address,
+          'imageUrl', NEW.image_url,
           'version', NEW.version
         ),
         NEW.version,
@@ -150,6 +162,7 @@ function createTrigger(table: string) {
           'tips', OLD.tips,
           'shop', OLD.shop,
           'shopAddress', OLD.shop_address,
+          'imageUrl', OLD.image_url,
           'version', OLD.version
         ),
         json_object(
@@ -167,6 +180,7 @@ function createTrigger(table: string) {
           'tips', NEW.tips,
           'shop', NEW.shop,
           'shopAddress', NEW.shop_address,
+          'imageUrl', NEW.image_url,
           'version', NEW.version
         ),
         NEW.version,
@@ -202,6 +216,7 @@ function createTrigger(table: string) {
           'tips', OLD.tips,
           'shop', OLD.shop,
           'shopAddress', OLD.shop_address,
+          'imageUrl', OLD.image_url,
           'version', OLD.version
         ),
         NULL,

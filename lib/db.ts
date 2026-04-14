@@ -7,7 +7,7 @@ import {
 } from "./types";
 
 const DB_NAME = "HaveYouEatenTodayDB";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export interface PendingDeletion {
   id?: number;
@@ -93,6 +93,16 @@ class AppDatabase extends Dexie {
     });
 
     this.version(4).stores({
+      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+    });
+
+    this.version(5).stores({
       menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
       tags: "id, name, type, createdAt, [spaceId+syncStatus]",
       rollHistory: "id, rolledAt",

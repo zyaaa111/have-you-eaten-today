@@ -227,6 +227,35 @@ describe("http-sync-engine", () => {
     expect(local?.tags).toEqual(["tag1"]);
   });
 
+  it("should sync imageUrl with menu items", async () => {
+    const remoteItem: MenuItem = {
+      id: "remote_img_1",
+      kind: "recipe",
+      name: "图片菜",
+      tags: [],
+      weight: 1,
+      imageUrl: "data:image/jpeg;base64,/9j/4AAQ...",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      spaceId: testSpace.id,
+      profileId: "other",
+      version: 1,
+    };
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.includes("/menu-items")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [remoteItem], text: async () => "" } as Response);
+      }
+      if (url.includes("/tags") || url.includes("/combo-templates")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
+    });
+
+    await engine.pullChanges();
+    const local = await db.menuItems.get("remote_img_1");
+    expect(local?.imageUrl).toBe("data:image/jpeg;base64,/9j/4AAQ...");
+  });
+
   it("should merge tags from different devices for the same menu item", async () => {
     // Local device already has the menu item with a local tag
     await createTag({ id: "local_tag_1", name: "辣", type: "custom", createdAt: Date.now() });

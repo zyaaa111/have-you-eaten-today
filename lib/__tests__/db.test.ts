@@ -31,6 +31,16 @@ describe("Database", () => {
     expect(templates.some((t) => t.isBuiltin)).toBe(true);
   });
 
+  it("should use deterministic ids for seed data", async () => {
+    await seedDatabase();
+    const tag = await db.tags.where("name").equals("川菜").first();
+    expect(tag?.id).toBe("seed-tag-川菜");
+    const item = await db.menuItems.where("name").equals("番茄炒蛋").first();
+    expect(item?.id).toBe("seed-item-recipe-番茄炒蛋");
+    const template = await db.comboTemplates.where("name").equals("1主食 + 1荤菜 + 1素菜").first();
+    expect(template?.id).toBe("seed-template-1主食 + 1荤菜 + 1素菜");
+  });
+
   it("should support menu item CRUD", async () => {
     const item: MenuItem = {
       id: uuidv4(),

@@ -307,6 +307,15 @@ export default function MenuPage() {
                   batchMode && selectedIds.includes(item.id) && "border-primary bg-primary/5"
                 )}
               >
+                {item.imageUrl && item.kind === "recipe" && (
+                  <div className="-mx-4 -mt-4 mb-2 h-32 overflow-hidden rounded-t-xl">
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2">
                   {batchMode && (
                     <input

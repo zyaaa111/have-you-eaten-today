@@ -31,6 +31,9 @@ export interface MenuItem {
   shop?: string;
   shopAddress?: string;
 
+  // image
+  imageUrl?: string;
+
   // sync / multi-user
   spaceId?: string;
   profileId?: string;

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import type { MenuItem, Tag, ComboTemplate, SyncStatus, ChangeLog } from "./types";
+import type { MenuItem, Tag, ComboTemplate, ChangeLog } from "./types";
 import type { SyncService, SyncPayload, SyncResult, SyncStatus as SyncServiceStatus } from "./sync-service";
 import { getLocalIdentity } from "./supabase";
 
@@ -186,34 +186,54 @@ export class HttpSyncEngine implements SyncService {
       api<ComboTemplate[]>(`/sync/combo-templates?space_id=${encodeURIComponent(spaceId)}`),
     ]);
 
-    await db.transaction("rw", db.menuItems, db.tags, db.comboTemplates, async () => {
-      for (const remote of menuItems) {
-        const local = await db.menuItems.get(remote.id);
-        if (!local) {
-          await db.menuItems.add({ ...remote, syncStatus: "synced" });
-        } else if (local.syncStatus !== "pending" && local.syncStatus !== "conflict") {
-          if ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0)) {
-            await db.menuItems.put({ ...remote, syncStatus: "synced" });
-          }
-        }
-      }
+    await db.transaction("rw", db.menuItems, db.tags, db.comboTemplates, db.tagMappings, async () => {
+      // 1. Clear old tag mappings for this space
+      await db.tagMappings.where({ spaceId }).delete();
+      const tagMappingMap = new Map<string, string>();
+
+      // 2. Process tags first so menuItems can reference them
       for (const remote of tags) {
         const local = await db.tags.get(remote.id);
-        if (!local) {
-          await db.tags.add({ ...remote, syncStatus: "synced" });
-        } else if (local.syncStatus !== "pending" && local.syncStatus !== "conflict") {
-          if ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0)) {
-            await db.tags.put({ ...remote, syncStatus: "synced" });
+        if (local) {
+          if (local.syncStatus !== "pending" && local.syncStatus !== "conflict") {
+            if ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0)) {
+              await db.tags.put({ ...remote, syncStatus: "synced" });
+            }
+          }
+        } else {
+          const existing = await db.tags.where("name").equals(remote.name).and((t) => t.type === remote.type).first();
+          if (existing) {
+            await db.tagMappings.add({ spaceId, aliasId: remote.id, canonicalId: existing.id });
+            tagMappingMap.set(remote.id, existing.id);
+          } else {
+            await db.tags.add({ ...remote, syncStatus: "synced" });
           }
         }
       }
-      for (const remote of comboTemplates) {
-        const local = await db.comboTemplates.get(remote.id);
+
+      // 3. Process menuItems with tag mapping and union merge
+      for (const remote of menuItems) {
+        const local = await db.menuItems.get(remote.id);
+        const resolvedRemoteTags = resolveTagIds(remote.tags, tagMappingMap);
         if (!local) {
-          await db.comboTemplates.add({ ...remote, syncStatus: "synced" });
+          await db.menuItems.add({ ...remote, tags: resolvedRemoteTags, syncStatus: "synced" });
         } else if (local.syncStatus !== "pending" && local.syncStatus !== "conflict") {
           if ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0)) {
-            await db.comboTemplates.put({ ...remote, syncStatus: "synced" });
+            const mergedTags = Array.from(new Set([...resolvedRemoteTags, ...(local.tags || [])]));
+            await db.menuItems.put({ ...remote, tags: mergedTags, syncStatus: "synced" });
+          }
+        }
+      }
+
+      // 4. Process comboTemplates with tag mapping
+      for (const remote of comboTemplates) {
+        const local = await db.comboTemplates.get(remote.id);
+        const resolvedRules = resolveComboRules(remote.rules, tagMappingMap);
+        if (!local) {
+          await db.comboTemplates.add({ ...remote, rules: resolvedRules, syncStatus: "synced" });
+        } else if (local.syncStatus !== "pending" && local.syncStatus !== "conflict") {
+          if ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0)) {
+            await db.comboTemplates.put({ ...remote, rules: resolvedRules, syncStatus: "synced" });
           }
         }
       }
@@ -273,6 +293,19 @@ function mapPathToTableName(path: string): "menu_items" | "tags" | "combo_templa
   if (path === "menu-items") return "menu_items";
   if (path === "tags") return "tags";
   return "combo_templates";
+}
+
+function resolveTagIds(tagIds: string[] | undefined, mappings: Map<string, string>): string[] {
+  if (!Array.isArray(tagIds)) return [];
+  return Array.from(new Set(tagIds.map((id) => mappings.get(id) || id)));
+}
+
+function resolveComboRules(rules: ComboTemplate["rules"] | undefined, mappings: Map<string, string>): ComboTemplate["rules"] {
+  if (!Array.isArray(rules)) return [];
+  return rules.map((rule) => ({
+    ...rule,
+    tagIds: rule.tagIds ? resolveTagIds(rule.tagIds, mappings) : rule.tagIds,
+  }));
 }
 
 export const syncEngine = new HttpSyncEngine();

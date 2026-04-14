@@ -7,7 +7,7 @@ import {
 } from "./types";
 
 const DB_NAME = "HaveYouEatenTodayDB";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export interface PendingDeletion {
   id?: number;
@@ -17,6 +17,13 @@ export interface PendingDeletion {
   createdAt: number;
 }
 
+export interface TagMapping {
+  id?: number;
+  spaceId: string;
+  aliasId: string;
+  canonicalId: string;
+}
+
 class AppDatabase extends Dexie {
   menuItems!: Table<MenuItem, string>;
   tags!: Table<Tag, string>;
@@ -24,6 +31,7 @@ class AppDatabase extends Dexie {
   comboTemplates!: Table<ComboTemplate, string>;
   settings!: Table<{ key: string; value: unknown }, string>;
   pendingDeletions!: Table<PendingDeletion, number>;
+  tagMappings!: Table<TagMapping, number>;
 
   constructor() {
     super(DB_NAME);
@@ -83,6 +91,16 @@ class AppDatabase extends Dexie {
       });
       return Promise.all([patchMenuItems, patchTags, patchTemplates]);
     });
+
+    this.version(4).stores({
+      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+    });
   }
 }
 
@@ -95,4 +113,5 @@ export async function resetDatabase() {
   await db.comboTemplates.clear();
   await db.settings.clear();
   await db.pendingDeletions.clear();
+  await db.tagMappings.clear();
 }

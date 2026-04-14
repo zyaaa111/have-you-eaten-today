@@ -224,6 +224,134 @@ describe("http-sync-engine", () => {
     const local = await db.menuItems.get("remote_1");
     expect(local?.name).toBe("远程菜");
     expect(local?.syncStatus).toBe("synced");
+    expect(local?.tags).toEqual(["tag1"]);
+  });
+
+  it("should merge tags from different devices for the same menu item", async () => {
+    // Local device already has the menu item with a local tag
+    await createTag({ id: "local_tag_1", name: "辣", type: "custom", createdAt: Date.now() });
+    await createMenuItem({
+      id: "shared_m1",
+      kind: "recipe",
+      name: "鱼香肉丝",
+      tags: ["local_tag_1"],
+      weight: 1,
+      createdAt: Date.now(),
+      updatedAt: 1000,
+    });
+    // Mark local as synced
+    await db.menuItems.update("shared_m1", { syncStatus: "synced" });
+
+    const remoteItem: MenuItem = {
+      id: "shared_m1",
+      kind: "recipe",
+      name: "鱼香肉丝",
+      tags: ["remote_tag_1"], // remote device added a different tag
+      weight: 1,
+      createdAt: Date.now(),
+      updatedAt: 2000, // newer
+      spaceId: testSpace.id,
+      profileId: "other",
+      version: 2,
+    };
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.includes("/menu-items")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [remoteItem], text: async () => "" } as Response);
+      }
+      if (url.includes("/tags")) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => [{ id: "remote_tag_1", name: "川菜", type: "cuisine", createdAt: Date.now(), spaceId: testSpace.id, profileId: "other", version: 1 }],
+          text: async () => "",
+        } as Response);
+      }
+      if (url.includes("/combo-templates")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
+    });
+
+    await engine.pullChanges();
+    const local = await db.menuItems.get("shared_m1");
+    expect(local?.tags).toContain("local_tag_1");
+    expect(local?.tags).toContain("remote_tag_1");
+  });
+
+  it("should deduplicate remote tags with same name and map ids", async () => {
+    // Local already has a "川菜" tag
+    await createTag({ id: "local_sichuan", name: "川菜", type: "cuisine", createdAt: Date.now() });
+    await db.tags.update("local_sichuan", { syncStatus: "synced" });
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.includes("/tags")) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => [
+            { id: "remote_sichuan", name: "川菜", type: "cuisine", createdAt: Date.now(), spaceId: testSpace.id, profileId: "other", version: 1 },
+          ],
+          text: async () => "",
+        } as Response);
+      }
+      if (url.includes("/menu-items") || url.includes("/combo-templates")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
+    });
+
+    await engine.pullChanges();
+    const tags = await db.tags.toArray();
+    const sichuanTags = tags.filter((t) => t.name === "川菜" && t.type === "cuisine");
+    expect(sichuanTags.length).toBe(1);
+    expect(sichuanTags[0].id).toBe("local_sichuan");
+
+    const mappings = await db.tagMappings.where({ spaceId: testSpace.id }).toArray();
+    expect(mappings.length).toBe(1);
+    expect(mappings[0].aliasId).toBe("remote_sichuan");
+    expect(mappings[0].canonicalId).toBe("local_sichuan");
+  });
+
+  it("should replace aliased tag ids in remote menu items", async () => {
+    // Local already has "川菜"
+    await createTag({ id: "local_sichuan", name: "川菜", type: "cuisine", createdAt: Date.now() });
+    await db.tags.update("local_sichuan", { syncStatus: "synced" });
+
+    const remoteItem: MenuItem = {
+      id: "remote_dish",
+      kind: "recipe",
+      name: "宫保鸡丁",
+      tags: ["remote_sichuan"], // uses the remote alias id
+      weight: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      spaceId: testSpace.id,
+      profileId: "other",
+      version: 1,
+    };
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.includes("/menu-items")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [remoteItem], text: async () => "" } as Response);
+      }
+      if (url.includes("/tags")) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => [
+            { id: "remote_sichuan", name: "川菜", type: "cuisine", createdAt: Date.now(), spaceId: testSpace.id, profileId: "other", version: 1 },
+          ],
+          text: async () => "",
+        } as Response);
+      }
+      if (url.includes("/combo-templates")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
+    });
+
+    await engine.pullChanges();
+    const local = await db.menuItems.get("remote_dish");
+    expect(local?.tags).not.toContain("remote_sichuan");
+    expect(local?.tags).toContain("local_sichuan");
   });
 
   it("should report zero pending when no changes exist", async () => {

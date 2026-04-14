@@ -45,11 +45,14 @@ export default function TagsPage() {
   const handleAdd = async () => {
     const name = newName.trim();
     if (!name) return;
-    const exists = tags.some(
+    const existing = tags.find(
       (t) => t.name === name && t.type === newType
     );
-    if (exists) {
-      showMessage("该标签已存在");
+    if (existing) {
+      showMessage(`标签「${existing.name}」已存在，将直接使用`);
+      setNewName("");
+      setNewType("custom");
+      setIsAdding(false);
       return;
     }
     await createTag({

@@ -2,7 +2,7 @@
 
 一个帮你解决"今天吃什么"烦恼的轻量级 Web 应用。支持菜单管理、随机抽选、组合模板、历史记录和多设备同步，可安装为 PWA 在手机上使用。
 
-![Version](https://img.shields.io/badge/version-1.0.2-blue)
+![Version](https://img.shields.io/badge/version-1.0.5-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)
@@ -168,7 +168,7 @@ have-you-eaten-today/
 
 ## 📝 版本与更新日志
 
-当前版本：**v1.0.2**
+当前版本：**v1.0.5**
 
 完整更新日志请查看 [CHANGELOG.md](./CHANGELOG.md)。
 

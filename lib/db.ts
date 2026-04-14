@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 const DB_NAME = "HaveYouEatenTodayDB";
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 export interface PendingDeletion {
   id?: number;
@@ -40,7 +40,7 @@ class AppDatabase extends Dexie {
     super(DB_NAME);
 
     this.version(1).stores({
-      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt",
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt",
       tags: "id, name, type, createdAt",
       rollHistory: "id, rolledAt",
       comboTemplates: "id, name, isBuiltin, createdAt",
@@ -48,7 +48,7 @@ class AppDatabase extends Dexie {
     });
 
     this.version(2).stores({
-      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt",
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt",
       tags: "id, name, type, createdAt",
       rollHistory: "id, rolledAt",
       comboTemplates: "id, name, isBuiltin, createdAt",
@@ -64,7 +64,7 @@ class AppDatabase extends Dexie {
     });
 
     this.version(3).stores({
-      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
       tags: "id, name, type, createdAt, [spaceId+syncStatus]",
       rollHistory: "id, rolledAt",
       comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
@@ -96,7 +96,7 @@ class AppDatabase extends Dexie {
     });
 
     this.version(4).stores({
-      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
       tags: "id, name, type, createdAt, [spaceId+syncStatus]",
       rollHistory: "id, rolledAt",
       comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
@@ -106,7 +106,7 @@ class AppDatabase extends Dexie {
     });
 
     this.version(5).stores({
-      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
       tags: "id, name, type, createdAt, [spaceId+syncStatus]",
       rollHistory: "id, rolledAt",
       comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
@@ -116,7 +116,7 @@ class AppDatabase extends Dexie {
     });
 
     this.version(6).stores({
-      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
       tags: "id, name, type, createdAt, [spaceId+syncStatus]",
       rollHistory: "id, rolledAt",
       comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
@@ -127,7 +127,7 @@ class AppDatabase extends Dexie {
     });
 
     this.version(7).stores({
-      menuItems: "id, kind, name, shop, *tags, weight, createdAt, updatedAt, [spaceId+syncStatus]",
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
       tags: "id, name, type, createdAt, [spaceId+syncStatus]",
       rollHistory: "id, rolledAt",
       comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
@@ -137,13 +137,29 @@ class AppDatabase extends Dexie {
       avoidances: "++id, menuItemId",
       personalWeights: "++id, menuItemId",
     }).upgrade(async (tx) => {
-      const items = await tx.table("menuItems").toArray() as MenuItem[];
+      const items = await tx.table("menuItems").toArray() as (MenuItem & { weight?: number })[];
       const weightsToAdd: PersonalWeight[] = items
         .filter((item) => typeof item.weight === "number" && item.weight !== 1)
-        .map((item) => ({ menuItemId: item.id, weight: item.weight }));
+        .map((item) => ({ menuItemId: item.id, weight: item.weight! }));
       if (weightsToAdd.length > 0) {
         await tx.table("personalWeights").bulkAdd(weightsToAdd);
       }
+    });
+
+    this.version(8).stores({
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+      avoidances: "++id, menuItemId",
+      personalWeights: "++id, menuItemId",
+    }).upgrade((tx) => {
+      return tx.table("menuItems").toCollection().modify((item: Record<string, unknown>) => {
+        delete item.weight;
+      });
     });
   }
 }

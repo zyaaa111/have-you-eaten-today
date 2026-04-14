@@ -18,7 +18,6 @@ export interface MenuItem {
   kind: MenuItemKind;
   name: string;
   tags: string[];
-  weight: number;
   createdAt: number;
   updatedAt: number;
 

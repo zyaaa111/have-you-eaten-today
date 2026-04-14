@@ -48,7 +48,6 @@ describe("Database", () => {
       kind: "recipe",
       name: "测试菜",
       tags: [],
-      weight: 2,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

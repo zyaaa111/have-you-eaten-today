@@ -411,7 +411,7 @@ export default function MenuPage() {
                       >
                         <Ban className={cn("w-4 h-4", avoidIds.includes(item.id) && "fill-current")} />
                       </button>
-                      <span className="text-xs text-muted-foreground">w{weightMap[item.id] ?? item.weight}</span>
+                      <span className="text-xs text-muted-foreground">w{weightMap[item.id] ?? 1}</span>
                     </div>
                   )}
                 </div>

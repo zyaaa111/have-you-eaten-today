@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { db, resetDatabase } from "@/lib/db";
 import { seedDatabase } from "@/lib/seed";
 import { exportData, importData } from "@/lib/io";
+import { getWeight } from "@/lib/weights";
 
 describe("Import/Export", () => {
   beforeEach(async () => {
@@ -58,5 +59,71 @@ describe("Import/Export", () => {
 
     const afterWeights = await db.personalWeights.toArray();
     expect(afterWeights.length).toBe(before.data.personalWeights?.length ?? 0);
+  });
+
+  it("should synthesize personal weights from legacy menu item weights on import", async () => {
+    const legacyBackup = {
+      schemaVersion: "1.0.0",
+      exportedAt: Date.now(),
+      appVersion: "1.0.4",
+      data: {
+        tags: [],
+        menuItems: [
+          {
+            id: "legacy-item",
+            kind: "recipe" as const,
+            name: "旧备份菜",
+            tags: [],
+            weight: 5,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        ],
+        comboTemplates: [],
+        rollHistory: [],
+      },
+    };
+
+    const file = new File([JSON.stringify(legacyBackup)], "legacy-backup.json");
+    const result = await importData(file);
+
+    expect(result.success).toBe(true);
+    expect(await getWeight("legacy-item")).toBe(5);
+    expect(await db.personalWeights.count()).toBe(1);
+    expect(await db.personalWeights.toArray()).toMatchObject([{ menuItemId: "legacy-item", weight: 5 }]);
+    expect(await db.menuItems.get("legacy-item")).not.toHaveProperty("weight");
+  });
+
+  it("should prefer explicit personal weights over legacy menu item weights on import", async () => {
+    const backup = {
+      schemaVersion: "1.0.0",
+      exportedAt: Date.now(),
+      appVersion: "1.0.4",
+      data: {
+        tags: [],
+        menuItems: [
+          {
+            id: "weighted-item",
+            kind: "recipe" as const,
+            name: "已迁移菜品",
+            tags: [],
+            weight: 3,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        ],
+        comboTemplates: [],
+        rollHistory: [],
+        personalWeights: [{ menuItemId: "weighted-item", weight: 9 }],
+      },
+    };
+
+    const file = new File([JSON.stringify(backup)], "backup.json");
+    const result = await importData(file);
+
+    expect(result.success).toBe(true);
+    expect(await getWeight("weighted-item")).toBe(9);
+    expect(await db.personalWeights.count()).toBe(1);
+    expect(await db.personalWeights.toArray()).toMatchObject([{ menuItemId: "weighted-item", weight: 9 }]);
   });
 });

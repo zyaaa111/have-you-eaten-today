@@ -42,7 +42,6 @@ describe("space-ops", () => {
       kind: "recipe",
       name: "红烧肉",
       tags: [],
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -60,7 +59,6 @@ describe("space-ops", () => {
       kind: "recipe",
       name: "红烧肉",
       tags: [],
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -77,7 +75,6 @@ describe("space-ops", () => {
       kind: "takeout",
       name: "汉堡",
       tags: [],
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -191,7 +188,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "测试",
       tags: [],
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -209,7 +205,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "默认 API",
       tags: [],
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -227,7 +222,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "外部 API",
       tags: [],
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -246,7 +240,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "远程菜",
       tags: ["tag1"],
-      weight: 2,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       spaceId: testSpace.id,
@@ -278,7 +271,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "图片菜",
       tags: [],
-      weight: 1,
       imageUrl: "data:image/jpeg;base64,/9j/4AAQ...",
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -309,7 +301,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "鱼香肉丝",
       tags: ["local_tag_1"],
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: 1000,
     });
@@ -321,7 +312,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "鱼香肉丝",
       tags: ["remote_tag_1"], // remote device added a different tag
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: 2000, // newer
       spaceId: testSpace.id,
@@ -395,7 +385,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "宫保鸡丁",
       tags: ["remote_sichuan"], // uses the remote alias id
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       spaceId: testSpace.id,
@@ -439,7 +428,6 @@ describe("http-sync-engine", () => {
       kind: "recipe",
       name: "测试",
       tags: [],
-      weight: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });

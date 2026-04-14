@@ -4,9 +4,6 @@ export async function getWeight(menuItemId: string): Promise<number> {
   const personal = await db.personalWeights.where({ menuItemId }).first();
   if (personal) return personal.weight;
 
-  const item = await db.menuItems.get(menuItemId);
-  if (item && typeof item.weight === "number") return item.weight;
-
   return 1;
 }
 
@@ -25,14 +22,6 @@ export async function getWeightsMap(menuItemIds: string[]): Promise<Record<strin
   const personalWeights = await db.personalWeights.where("menuItemId").anyOf(menuItemIds).toArray();
   for (const pw of personalWeights) {
     map[pw.menuItemId] = pw.weight;
-  }
-
-  const missingIds = menuItemIds.filter((id) => map[id] === undefined);
-  if (missingIds.length > 0) {
-    const items = await db.menuItems.where("id").anyOf(missingIds).toArray();
-    for (const item of items) {
-      map[item.id] = typeof item.weight === "number" ? item.weight : 1;
-    }
   }
 
   for (const id of menuItemIds) {

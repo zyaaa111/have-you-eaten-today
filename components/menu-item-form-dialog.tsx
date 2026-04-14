@@ -7,6 +7,11 @@ import { MenuItem, MenuItemKind, Tag, TagType, Ingredient, RecipeStep } from "@/
 import { createMenuItem, updateMenuItem, getCurrentProfileId } from "@/lib/space-ops";
 import { getWeight, setWeight as saveItemWeight } from "@/lib/weights";
 import { syncEngine } from "@/lib/sync-engine";
+import {
+  buildMenuItemFormDraft,
+  parseMenuItemFormDraft,
+  resolveDraftWeight,
+} from "@/lib/menu-item-form-draft";
 import { v4 as uuidv4 } from "uuid";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -82,15 +87,10 @@ export function MenuItemFormDialog({
 
       // Load draft if exists
       const draftRaw = typeof window !== "undefined" ? localStorage.getItem(draftKey) : null;
-      let draft: Partial<MenuItem> | null = null;
-      if (draftRaw) {
-        try {
-          draft = JSON.parse(draftRaw);
-        } catch {}
-      }
+      const draft = parseMenuItemFormDraft(draftRaw);
 
       if (initialData) {
-        let personalWeight = initialData.weight ?? 1;
+        let personalWeight: number | undefined = 1;
         try {
           personalWeight = await getWeight(initialData.id);
         } catch {}
@@ -98,7 +98,7 @@ export function MenuItemFormDialog({
         setKind(draft?.kind || initialData.kind);
         setName(draft?.name ?? initialData.name);
         setSelectedTagIds(draft?.tags ?? initialData.tags);
-        setWeight(draft?.weight ?? personalWeight);
+        setWeight(resolveDraftWeight(draft?.weight, personalWeight));
         setIngredients(
           ((draft?.ingredients as Ingredient[] | undefined)?.map((i) => ({ name: i.name, amount: i.amount || "" })))
             ?? (initialData.ingredients?.map((i) => ({ name: i.name, amount: i.amount || "" })) || [])
@@ -141,7 +141,7 @@ export function MenuItemFormDialog({
         setKind(draft?.kind || "recipe");
         setName(draft?.name ?? "");
         setSelectedTagIds(draft?.tags ?? []);
-        setWeight(draft?.weight ?? 1);
+        setWeight(resolveDraftWeight(draft?.weight));
         setIngredients(
           (draft?.ingredients as Ingredient[] | undefined)?.map((i) => ({ name: i.name, amount: i.amount || "" })) || []
         );
@@ -168,7 +168,7 @@ export function MenuItemFormDialog({
   // Auto-save draft
   useEffect(() => {
     if (!open) return;
-    const payload: Partial<MenuItem> = {
+    const payload = buildMenuItemFormDraft({
       kind,
       name,
       tags: selectedTagIds,
@@ -179,7 +179,7 @@ export function MenuItemFormDialog({
       shop: shop.trim() || undefined,
       shopAddress: shopAddress.trim() || undefined,
       imageUrl,
-    };
+    });
     localStorage.setItem(draftKey, JSON.stringify(payload));
   }, [kind, name, selectedTagIds, weight, ingredients, steps, tips, shop, shopAddress, imageUrl, open, draftKey]);
 
@@ -322,7 +322,6 @@ export function MenuItemFormDialog({
     } else {
       const newItem: Omit<MenuItem, "spaceId" | "profileId" | "syncStatus" | "version"> & { id: string } = {
         ...base,
-        weight,
         id: uuidv4(),
         createdAt: now,
       };

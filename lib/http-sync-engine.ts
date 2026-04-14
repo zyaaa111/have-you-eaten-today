@@ -227,13 +227,11 @@ export class HttpSyncEngine implements SyncService {
         const local = await db.menuItems.get(remote.id);
         const resolvedRemoteTags = resolveTagIds(remote.tags, tagMappingMap);
         if (!local) {
-          const preservedWeight = 1;
-          await db.menuItems.add({ ...remote, tags: resolvedRemoteTags, weight: preservedWeight, syncStatus: "synced" });
+          await db.menuItems.add({ ...remote, tags: resolvedRemoteTags, syncStatus: "synced" });
         } else if (local.syncStatus !== "pending" && local.syncStatus !== "conflict") {
           if ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0)) {
             const mergedTags = Array.from(new Set([...resolvedRemoteTags, ...(local.tags || [])]));
-            const preservedWeight = local.weight ?? remote.weight ?? 1;
-            await db.menuItems.put({ ...remote, tags: mergedTags, weight: preservedWeight, syncStatus: "synced" });
+            await db.menuItems.put({ ...remote, tags: mergedTags, syncStatus: "synced" });
           }
         }
       }

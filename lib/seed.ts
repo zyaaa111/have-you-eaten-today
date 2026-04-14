@@ -21,7 +21,6 @@ const defaultMenuItems: Omit<MenuItem, "id" | "createdAt" | "updatedAt">[] = [
     kind: "recipe",
     name: "番茄炒蛋",
     tags: [],
-    weight: 1,
     ingredients: [
       { name: "番茄", amount: "2个" },
       { name: "鸡蛋", amount: "3个" },
@@ -38,14 +37,12 @@ const defaultMenuItems: Omit<MenuItem, "id" | "createdAt" | "updatedAt">[] = [
     kind: "takeout",
     name: "香辣鸡腿堡",
     tags: [],
-    weight: 1,
     shop: "肯德基",
   },
   {
     kind: "recipe",
     name: "红烧肉",
     tags: [],
-    weight: 1,
     ingredients: [
       { name: "五花肉", amount: "500g" },
       { name: "冰糖", amount: "30g" },

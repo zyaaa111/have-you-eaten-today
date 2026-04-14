@@ -75,9 +75,9 @@ describe("Roll Engine", () => {
     const vegTag = tags.find((t) => t.name === "素菜")!;
 
     await db.menuItems.bulkAdd([
-      { id: uuidv4(), kind: "recipe", name: "米饭", tags: [stapleTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
-      { id: uuidv4(), kind: "recipe", name: "清蒸鱼", tags: [meatTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
-      { id: uuidv4(), kind: "recipe", name: "凉拌黄瓜", tags: [vegTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
+      { id: uuidv4(), kind: "recipe", name: "米饭", tags: [stapleTag.id], createdAt: Date.now(), updatedAt: Date.now() },
+      { id: uuidv4(), kind: "recipe", name: "清蒸鱼", tags: [meatTag.id], createdAt: Date.now(), updatedAt: Date.now() },
+      { id: uuidv4(), kind: "recipe", name: "凉拌黄瓜", tags: [vegTag.id], createdAt: Date.now(), updatedAt: Date.now() },
     ]);
 
     const result = await rollCombo({ templateId: template!.id });
@@ -168,9 +168,9 @@ describe("Roll Engine", () => {
     const cucumberId = uuidv4();
 
     await db.menuItems.bulkAdd([
-      { id: riceId, kind: "recipe", name: "米饭", tags: [stapleTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
-      { id: fishId, kind: "recipe", name: "清蒸鱼", tags: [meatTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
-      { id: cucumberId, kind: "recipe", name: "凉拌黄瓜", tags: [vegTag.id], weight: 1, createdAt: Date.now(), updatedAt: Date.now() },
+      { id: riceId, kind: "recipe", name: "米饭", tags: [stapleTag.id], createdAt: Date.now(), updatedAt: Date.now() },
+      { id: fishId, kind: "recipe", name: "清蒸鱼", tags: [meatTag.id], createdAt: Date.now(), updatedAt: Date.now() },
+      { id: cucumberId, kind: "recipe", name: "凉拌黄瓜", tags: [vegTag.id], createdAt: Date.now(), updatedAt: Date.now() },
     ]);
 
     // Avoid the only meat item
@@ -188,14 +188,8 @@ describe("Roll Engine", () => {
     if (allItems.length < 2) return;
 
     const targetId = allItems[0].id;
-    // Set baseline low weight on item, high personal weight
-    await db.menuItems.update(targetId, { weight: 1 });
+    // Set high personal weight on target item
     await setWeight(targetId, 20);
-
-    // Ensure other items also have weight 1
-    for (const item of allItems.slice(1)) {
-      await db.menuItems.update(item.id, { weight: 1 });
-    }
 
     let targetHits = 0;
     const trials = 30;

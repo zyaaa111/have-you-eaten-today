@@ -10,6 +10,7 @@ import { getWishIds, toggleWishId } from "@/lib/wishlist";
 import { isAvoided, toggleAvoidance } from "@/lib/avoidances";
 import { syncEngine } from "@/lib/sync-engine";
 import { updateMenuItem } from "@/lib/space-ops";
+import { getWeight } from "@/lib/weights";
 
 interface MenuItemDetailDialogProps {
   item: MenuItem | null;
@@ -45,11 +46,13 @@ export function MenuItemDetailDialog({
   const [logs, setLogs] = useState<ChangeLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [personalWeight, setPersonalWeight] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     if (open && item) {
       getWishIds().then((ids) => setIsWished(ids.includes(item.id)));
       isAvoided(item.id).then(setAvoided);
+      getWeight(item.id).then(setPersonalWeight);
       setShowHistory(false);
       setLogs([]);
       setHistoryError("");
@@ -212,7 +215,7 @@ export function MenuItemDetailDialog({
                   </>
                 )}
               </span>
-              <span className="text-xs text-muted-foreground">权重 {item.weight}</span>
+              <span className="text-xs text-muted-foreground">权重 {personalWeight ?? "—"}</span>
             </div>
 
             {itemTags.length > 0 && (

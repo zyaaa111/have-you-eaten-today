@@ -35,14 +35,13 @@ export function mapRows(rows: Record<string, unknown>[]) {
 export function buildUpsertStatement(table: SyncTable) {
   if (table === "menu_items") {
     return db.prepare(`
-      INSERT INTO menu_items (id, space_id, profile_id, kind, name, tags, weight, created_at, updated_at, ingredients, steps, tips, shop, shop_address, image_url, version)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO menu_items (id, space_id, profile_id, kind, name, tags, created_at, updated_at, ingredients, steps, tips, shop, shop_address, image_url, version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         profile_id = excluded.profile_id,
         kind = excluded.kind,
         name = excluded.name,
         tags = excluded.tags,
-        weight = excluded.weight,
         updated_at = excluded.updated_at,
         ingredients = excluded.ingredients,
         steps = excluded.steps,
@@ -96,7 +95,6 @@ export function pushTable(table: SyncTable, items: Record<string, unknown>[]) {
           s.kind,
           s.name,
           JSON.stringify(s.tags ?? []),
-          s.weight ?? 1,
           s.created_at,
           s.updated_at,
           s.ingredients ? JSON.stringify(s.ingredients) : null,

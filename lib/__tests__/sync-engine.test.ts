@@ -265,6 +265,36 @@ describe("http-sync-engine", () => {
     expect(local?.tags).toEqual(["tag1"]);
   });
 
+  it("should discard legacy shared weight when pulling remote menu items", async () => {
+    const remoteItem = {
+      id: "remote_weight_1",
+      kind: "recipe" as const,
+      name: "遗留权重菜",
+      tags: [],
+      weight: 9,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      spaceId: testSpace.id,
+      profileId: "other",
+      version: 1,
+    };
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.includes("/menu-items")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [remoteItem], text: async () => "" } as Response);
+      }
+      if (url.includes("/tags") || url.includes("/combo-templates")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
+    });
+
+    await engine.pullChanges();
+    const local = await db.menuItems.get("remote_weight_1") as (MenuItem & { weight?: number }) | undefined;
+    expect(local?.weight).toBeUndefined();
+    expect(await db.personalWeights.count()).toBe(0);
+  });
+
   it("should sync imageUrl with menu items", async () => {
     const remoteItem: MenuItem = {
       id: "remote_img_1",

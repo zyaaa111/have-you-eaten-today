@@ -1,5 +1,6 @@
+import Dexie from "dexie";
 import { describe, it, expect, beforeEach } from "vitest";
-import { db, resetDatabase } from "@/lib/db";
+import { AppDatabase, db, resetDatabase } from "@/lib/db";
 import { seedDatabase } from "@/lib/seed";
 import { MenuItem } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
@@ -85,5 +86,52 @@ describe("Database", () => {
 
     const after = await db.menuItems.where("tags").anyOf(tag!.id).count();
     expect(after).toBe(0);
+  });
+
+  it("should remove legacy menuItems.weight during Dexie migration without touching personalWeights", async () => {
+    const legacyDbName = `HaveYouEatenTodayDB_migration_${Date.now()}`;
+    const legacyDb = new Dexie(legacyDbName);
+
+    legacyDb.version(8).stores({
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+      avoidances: "++id, menuItemId",
+      personalWeights: "++id, menuItemId",
+    });
+
+    await legacyDb.open();
+    await legacyDb.table("menuItems").add({
+      id: "legacy_weight_item",
+      kind: "recipe",
+      name: "旧权重菜",
+      tags: [],
+      weight: 8,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    await legacyDb.table("personalWeights").add({
+      menuItemId: "legacy_weight_item",
+      weight: 5,
+    });
+    await legacyDb.close();
+
+    const migratedDb = new AppDatabase(legacyDbName);
+
+    try {
+      await migratedDb.open();
+      const item = await migratedDb.menuItems.get("legacy_weight_item") as MenuItem & { weight?: number };
+      expect(item?.weight).toBeUndefined();
+      expect(await migratedDb.personalWeights.toArray()).toMatchObject([
+        { menuItemId: "legacy_weight_item", weight: 5 },
+      ]);
+    } finally {
+      migratedDb.close();
+      await migratedDb.delete();
+    }
   });
 });

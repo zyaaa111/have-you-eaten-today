@@ -11,6 +11,7 @@ import { isAvoided, toggleAvoidance } from "@/lib/avoidances";
 import { syncEngine } from "@/lib/sync-engine";
 import { updateMenuItem } from "@/lib/space-ops";
 import { getWeight } from "@/lib/weights";
+import { buildMenuItemRestorePayload } from "@/lib/menu-item-sanitize";
 
 interface MenuItemDetailDialogProps {
   item: MenuItem | null;
@@ -102,8 +103,9 @@ export function MenuItemDetailDialog({
     if (!item) return;
     const ok = confirm(`确定恢复到此版本吗？当前版本将被覆盖，但也会保留在历史记录中。`);
     if (!ok) return;
+    const restored = buildMenuItemRestorePayload(snapshot);
     await updateMenuItem(item.id, {
-      ...snapshot,
+      ...restored,
       updatedAt: Date.now(),
     } as Partial<MenuItem>);
     setShowHistory(false);

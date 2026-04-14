@@ -3,6 +3,7 @@ import type { MenuItem, Tag, ComboTemplate, ChangeLog } from "./types";
 import type { SyncService, SyncPayload, SyncResult, SyncStatus as SyncServiceStatus } from "./sync-service";
 import { getLocalIdentity } from "./supabase";
 import { buildApiUrl } from "./api-base";
+import { sanitizeMenuItemRecord, sanitizeMenuItemSnapshot } from "./menu-item-sanitize";
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const url = buildApiUrl(path);
@@ -196,6 +197,9 @@ export class HttpSyncEngine implements SyncService {
       api<Tag[]>(`/sync/tags?space_id=${encodeURIComponent(spaceId)}`),
       api<ComboTemplate[]>(`/sync/combo-templates?space_id=${encodeURIComponent(spaceId)}`),
     ]);
+    const sanitizedMenuItems = menuItems.map(
+      (item) => sanitizeMenuItemRecord(item as unknown as Record<string, unknown>) as unknown as MenuItem
+    );
 
     await db.transaction("rw", db.menuItems, db.tags, db.comboTemplates, db.tagMappings, async () => {
       // 1. Clear old tag mappings for this space
@@ -223,7 +227,7 @@ export class HttpSyncEngine implements SyncService {
       }
 
       // 3. Process menuItems with tag mapping and union merge
-      for (const remote of menuItems) {
+      for (const remote of sanitizedMenuItems) {
         const local = await db.menuItems.get(remote.id);
         const resolvedRemoteTags = resolveTagIds(remote.tags, tagMappingMap);
         if (!local) {
@@ -250,7 +254,7 @@ export class HttpSyncEngine implements SyncService {
       }
     });
 
-    return { menuItems, tags, comboTemplates };
+    return { menuItems: sanitizedMenuItems, tags, comboTemplates };
   }
 
   async getSyncStatus(): Promise<SyncServiceStatus> {
@@ -272,9 +276,10 @@ export class HttpSyncEngine implements SyncService {
   async fetchChangeLogs(limit = 50): Promise<ChangeLog[]> {
     const identity = getLocalIdentity();
     if (!identity) return [];
-    return api<ChangeLog[]>(
+    const logs = await api<ChangeLog[]>(
       `/changelog?space_id=${encodeURIComponent(identity.space.id)}&limit=${limit}`
     );
+    return sanitizeChangeLogs(logs);
   }
 
   async fetchChangeLogsForRecord(
@@ -283,11 +288,12 @@ export class HttpSyncEngine implements SyncService {
   ): Promise<ChangeLog[]> {
     const identity = getLocalIdentity();
     if (!identity) return [];
-    return api<ChangeLog[]>(
+    const logs = await api<ChangeLog[]>(
       `/changelog/record?space_id=${encodeURIComponent(identity.space.id)}&table_name=${encodeURIComponent(
         tableName
       )}&record_id=${encodeURIComponent(recordId)}`
     );
+    return sanitizeChangeLogs(logs);
   }
 
   subscribeToChanges(callback: () => void): { unsubscribe: () => void } {
@@ -317,6 +323,17 @@ function resolveComboRules(rules: ComboTemplate["rules"] | undefined, mappings: 
     ...rule,
     tagIds: rule.tagIds ? resolveTagIds(rule.tagIds, mappings) : rule.tagIds,
   }));
+}
+
+function sanitizeChangeLogs(logs: ChangeLog[]): ChangeLog[] {
+  return logs.map((log) => {
+    if (log.tableName !== "menu_items") return log;
+    return {
+      ...log,
+      beforeSnapshot: sanitizeMenuItemSnapshot(log.beforeSnapshot ?? null),
+      afterSnapshot: sanitizeMenuItemSnapshot(log.afterSnapshot ?? null),
+    };
+  });
 }
 
 export const syncEngine = new HttpSyncEngine();

@@ -34,7 +34,6 @@ db.exec(`
     kind TEXT NOT NULL,
     name TEXT NOT NULL,
     tags TEXT NOT NULL DEFAULT '[]',
-    weight INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     ingredients TEXT,
@@ -86,14 +85,63 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_change_logs_record ON change_logs(table_name, record_id);
 `);
 
-// Migration: add image_url column to existing databases
+function dropCrudTriggers(table: string) {
+  db.exec(`
+    DROP TRIGGER IF EXISTS trg_${table}_insert;
+    DROP TRIGGER IF EXISTS trg_${table}_update;
+    DROP TRIGGER IF EXISTS trg_${table}_delete;
+  `);
+}
+
+function recreateMenuItemsTableWithoutWeight(includeImageUrl: boolean) {
+  const selectImageUrl = includeImageUrl ? "image_url" : "NULL";
+  const migrate = db.transaction(() => {
+    dropCrudTriggers("menu_items");
+    db.exec(`ALTER TABLE menu_items RENAME TO menu_items_legacy`);
+    db.exec(`
+      CREATE TABLE menu_items (
+        id TEXT PRIMARY KEY,
+        space_id TEXT NOT NULL,
+        profile_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        tags TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        ingredients TEXT,
+        steps TEXT,
+        tips TEXT,
+        shop TEXT,
+        shop_address TEXT,
+        image_url TEXT,
+        version INTEGER NOT NULL DEFAULT 1
+      )
+    `);
+    db.exec(`
+      INSERT INTO menu_items (
+        id, space_id, profile_id, kind, name, tags, created_at, updated_at,
+        ingredients, steps, tips, shop, shop_address, image_url, version
+      )
+      SELECT
+        id, space_id, profile_id, kind, name, tags, created_at, updated_at,
+        ingredients, steps, tips, shop, shop_address, ${selectImageUrl}, version
+      FROM menu_items_legacy
+    `);
+    db.exec(`DROP TABLE menu_items_legacy`);
+  });
+  migrate();
+}
+
+// Migration: strip legacy shared weight column and ensure image_url exists
 const menuItemsColumns = db.prepare("PRAGMA table_info(menu_items)").all() as { name: string }[];
-if (!menuItemsColumns.some((c) => c.name === "image_url")) {
+const hasLegacyWeight = menuItemsColumns.some((c) => c.name === "weight");
+const hasImageUrl = menuItemsColumns.some((c) => c.name === "image_url");
+
+if (hasLegacyWeight) {
+  recreateMenuItemsTableWithoutWeight(hasImageUrl);
+} else if (!hasImageUrl) {
   db.exec(`ALTER TABLE menu_items ADD COLUMN image_url TEXT`);
-  // Recreate triggers to include imageUrl
-  db.exec(`DROP TRIGGER IF EXISTS trg_menu_items_insert`);
-  db.exec(`DROP TRIGGER IF EXISTS trg_menu_items_update`);
-  db.exec(`DROP TRIGGER IF EXISTS trg_menu_items_delete`);
+  dropCrudTriggers("menu_items");
 }
 
 // Triggers for menu_items
@@ -353,6 +401,9 @@ function createComboTrigger() {
   `);
 }
 
+dropCrudTriggers("menu_items");
+dropCrudTriggers("tags");
+dropCrudTriggers("combo_templates");
 createTrigger("menu_items");
 createTagTrigger();
 createComboTrigger();

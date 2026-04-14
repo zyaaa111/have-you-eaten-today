@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS public.menu_items (
   kind TEXT NOT NULL,
   name TEXT NOT NULL,
   tags JSONB DEFAULT '[]'::jsonb,
-  weight INTEGER DEFAULT 1,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL,
   ingredients JSONB,

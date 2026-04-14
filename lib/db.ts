@@ -7,8 +7,8 @@ import {
   PersonalWeight,
 } from "./types";
 
-const DB_NAME = "HaveYouEatenTodayDB";
-const DB_VERSION = 8;
+export const DB_NAME = "HaveYouEatenTodayDB";
+export const DB_VERSION = 9;
 
 export interface PendingDeletion {
   id?: number;
@@ -25,7 +25,7 @@ export interface TagMapping {
   canonicalId: string;
 }
 
-class AppDatabase extends Dexie {
+export class AppDatabase extends Dexie {
   menuItems!: Table<MenuItem, string>;
   tags!: Table<Tag, string>;
   rollHistory!: Table<RollHistory, string>;
@@ -36,8 +36,8 @@ class AppDatabase extends Dexie {
   avoidances!: Table<{ id?: number; menuItemId: string }, number>;
   personalWeights!: Table<PersonalWeight, number>;
 
-  constructor() {
-    super(DB_NAME);
+  constructor(name = DB_NAME) {
+    super(name);
 
     this.version(1).stores({
       menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt",
@@ -147,6 +147,22 @@ class AppDatabase extends Dexie {
     });
 
     this.version(8).stores({
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+      avoidances: "++id, menuItemId",
+      personalWeights: "++id, menuItemId",
+    }).upgrade((tx) => {
+      return tx.table("menuItems").toCollection().modify((item: Record<string, unknown>) => {
+        delete item.weight;
+      });
+    });
+
+    this.version(9).stores({
       menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
       tags: "id, name, type, createdAt, [spaceId+syncStatus]",
       rollHistory: "id, rolledAt",

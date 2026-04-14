@@ -1,4 +1,5 @@
 import { db } from "./db-server";
+import { sanitizeMenuItemRecord } from "./menu-item-sanitize";
 
 export type SyncTable = "menu_items" | "tags" | "combo_templates";
 
@@ -20,7 +21,11 @@ export function toCamelCase(obj: Record<string, unknown>): Record<string, unknow
   return out;
 }
 
-export function mapRows(rows: Record<string, unknown>[]) {
+function sanitizeTableRecord(table: SyncTable, row: Record<string, unknown>): Record<string, unknown> {
+  return table === "menu_items" ? sanitizeMenuItemRecord(row) : row;
+}
+
+export function mapRows(table: SyncTable, rows: Record<string, unknown>[]) {
   return rows.map((r) => {
     const c = toCamelCase(r);
     if (typeof c.tags === "string") c.tags = JSON.parse(c.tags);
@@ -28,7 +33,7 @@ export function mapRows(rows: Record<string, unknown>[]) {
     if (typeof c.steps === "string" && c.steps) c.steps = JSON.parse(c.steps);
     if (typeof c.rules === "string" && c.rules) c.rules = JSON.parse(c.rules);
     if (c.isBuiltin !== undefined) c.isBuiltin = Boolean(c.isBuiltin);
-    return c;
+    return sanitizeTableRecord(table, c);
   });
 }
 
@@ -79,14 +84,14 @@ export function buildUpsertStatement(table: SyncTable) {
 
 export function pullTable(table: SyncTable, spaceId: string) {
   const rows = db.prepare(`SELECT * FROM ${table} WHERE space_id = ?`).all(spaceId) as Record<string, unknown>[];
-  return mapRows(rows);
+  return mapRows(table, rows);
 }
 
 export function pushTable(table: SyncTable, items: Record<string, unknown>[]) {
   const stmt = buildUpsertStatement(table);
   const upsert = db.transaction((rows: Record<string, unknown>[]) => {
     for (const item of rows) {
-      const s = toSnakeCase(item);
+      const s = toSnakeCase(sanitizeTableRecord(table, item));
       if (table === "menu_items") {
         stmt.run(
           s.id,

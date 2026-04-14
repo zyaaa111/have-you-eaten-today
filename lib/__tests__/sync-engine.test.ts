@@ -13,6 +13,8 @@ import {
 } from "../space-ops";
 import { HttpSyncEngine } from "../http-sync-engine";
 
+const ORIGINAL_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+
 const testSpace: Space = {
   id: "space_test_1",
   inviteCode: "TEST01",
@@ -146,6 +148,11 @@ describe("http-sync-engine", () => {
   });
 
   afterEach(() => {
+    if (ORIGINAL_API_BASE === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = ORIGINAL_API_BASE;
+    }
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -193,6 +200,44 @@ describe("http-sync-engine", () => {
     expect(result.success).toBe(true);
     const item = await db.menuItems.get("m4");
     expect(item?.syncStatus).toBe("synced");
+  });
+
+  it("should default sync requests to /api when NEXT_PUBLIC_API_BASE_URL is missing", async () => {
+    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    await createMenuItem({
+      id: "m4_default_api",
+      kind: "recipe",
+      name: "默认 API",
+      tags: [],
+      weight: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    mockFetchOk({ success: true, count: 1 });
+
+    await engine.pushChanges();
+
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe("/api/sync/menu-items");
+  });
+
+  it("should respect an explicit external API base for sync requests", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "https://sync.example.com/api/";
+    await createMenuItem({
+      id: "m4_external_api",
+      kind: "recipe",
+      name: "外部 API",
+      tags: [],
+      weight: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    mockFetchOk({ success: true, count: 1 });
+
+    await engine.pushChanges();
+
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
+      "https://sync.example.com/api/sync/menu-items"
+    );
   });
 
   it("should pull menu items from remote", async () => {
@@ -404,6 +449,7 @@ describe("http-sync-engine", () => {
   });
 
   it("should fetch change logs", async () => {
+    delete process.env.NEXT_PUBLIC_API_BASE_URL;
     mockFetchOk([
       {
         id: "log1",
@@ -419,5 +465,8 @@ describe("http-sync-engine", () => {
     const logs = await engine.fetchChangeLogs(10);
     expect(logs.length).toBe(1);
     expect(logs[0].operation).toBe("create");
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
+      `/api/changelog?space_id=${encodeURIComponent(testSpace.id)}&limit=10`
+    );
   });
 });

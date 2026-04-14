@@ -2,11 +2,11 @@ import { db } from "./db";
 import type { MenuItem, Tag, ComboTemplate, ChangeLog } from "./types";
 import type { SyncService, SyncPayload, SyncResult, SyncStatus as SyncServiceStatus } from "./sync-service";
 import { getLocalIdentity } from "./supabase";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+import { buildApiUrl } from "./api-base";
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = buildApiUrl(path);
+  const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -15,7 +15,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
     const isHtml = text.trim().startsWith("<") || text.includes("<!DOCTYPE");
     if (res.status === 404 && isHtml) {
       throw new Error(
-        `HTTP 404: 服务端 API 不存在 (${path})。请确认服务器已执行 npm run build 并重启。`
+        `HTTP 404: 服务端 API 不存在 (${url})。请确认 NEXT_PUBLIC_API_BASE_URL 指向 /api（修改后需重新构建），并检查服务器已部署 app/api 路由。`
       );
     }
     const preview = text.length > 300 ? text.slice(0, 300) + "..." : text;

@@ -55,6 +55,8 @@
 | PWA | [next-pwa](https://github.com/shadowwalker/next-pwa) |
 | 测试 | [Vitest](https://vitest.dev/) + [jsdom](https://github.com/jsdom/jsdom) |
 
+当前生产架构是 `Next.js App Router + app/api/* Route Handlers + IndexedDB(Dexie) + SQLite(better-sqlite3)`。
+
 ---
 
 ## 🚀 快速开始
@@ -77,7 +79,7 @@ npm install
 npm run dev
 ```
 
-开发服务器默认绑定 `0.0.0.0:3000`，同一局域网内的手机或其他设备可直接通过本机 IP 访问。
+默认访问地址为 `http://localhost:3000`。
 
 ### 生产构建
 
@@ -85,6 +87,12 @@ npm run dev
 npm run build
 npm run start
 ```
+
+### API 地址配置
+
+- 同域部署时可以不配置 `NEXT_PUBLIC_API_BASE_URL`，前端默认会请求 `/api`
+- 如果需要请求独立 API 域名，可在构建前设置 `NEXT_PUBLIC_API_BASE_URL=https://example.com/api`
+- `NEXT_PUBLIC_*` 变量会在构建时注入浏览器代码，修改后必须重新执行 `npm run build`
 
 ---
 
@@ -106,16 +114,19 @@ server/data/menu.db
 ## 🌐 局域网 / 内网穿透访问
 
 ### 局域网访问
-`package.json` 中的脚本已绑定 `-H 0.0.0.0`：
-
-```bash
-npm run dev   # 或 npm run start
-```
-
-手机/其他设备通过 `http://<你的IP>:3000` 即可访问。
+手机/其他设备能否直接通过局域网访问，取决于你的运行环境、主机防火墙和端口暴露方式。最稳妥的共享方式仍然是通过内网穿透把 3000 端口暴露出去。
 
 ### 内网穿透（如 cpolar）
 `next.config.js` 已配置 `allowedDevOrigins`，支持 `*.cpolar.cn` 和 `*.nas.cpolar.cn` 域名下的 HMR WebSocket 连接，避免开发模式下出现 `WebSocket 1006` 报错。
+
+生产环境建议使用：
+
+```bash
+npm run build
+npm run start
+```
+
+如果是同域部署，不需要额外设置 API base；如果改过 `NEXT_PUBLIC_API_BASE_URL`，请在重新 build 后再启动。
 
 ---
 
@@ -147,10 +158,10 @@ have-you-eaten-today/
 │   ├── templates/          # 组合模板页面
 │   └── page.tsx            # 首页
 ├── components/             # React 组件
-├── lib/                    # 工具函数、数据库客户端
-├── server/                 # 服务端逻辑、SQLite 数据库文件
+├── lib/                    # 工具函数、客户端 DB 与同步逻辑
+├── server/                 # SQLite 数据文件
 ├── public/                 # 静态资源、PWA manifest
-└── tests/                  # 测试用例
+└── lib/__tests__/          # Vitest 测试用例
 ```
 
 ---

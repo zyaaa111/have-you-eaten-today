@@ -1,6 +1,5 @@
 import type { Space, Profile } from "./types";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+import { buildApiUrl } from "./api-base";
 
 const LOCAL_PROFILE_KEY = "hyet_profile_v1";
 const LOCAL_SPACE_KEY = "hyet_space_v1";
@@ -42,7 +41,7 @@ export async function ensureAnonymousUser(): Promise<{ userId: string; error?: E
   if (local) return { userId: local.profile.id };
 
   try {
-    const res = await fetch(`${API_BASE}/auth/anonymous`, {
+    const res = await fetch(buildApiUrl("/auth/anonymous"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });

@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ensureAnonymousUser, saveLocalIdentity, getLocalIdentity, generateInviteCode } from "@/lib/supabase";
+import { buildApiUrl } from "@/lib/api-base";
 import { db } from "@/lib/db";
 import type { Space, Profile } from "@/lib/types";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
 export default function JoinPage() {
   const router = useRouter();
@@ -44,7 +43,7 @@ export default function JoinPage() {
         return;
       }
 
-      const res = await fetch(`${API_BASE}/spaces/join`, {
+      const res = await fetch(buildApiUrl("/spaces/join"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -107,7 +106,7 @@ export default function JoinPage() {
         return;
       }
 
-      const res = await fetch(`${API_BASE}/spaces`, {
+      const res = await fetch(buildApiUrl("/spaces"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

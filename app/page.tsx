@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { ChefHat, Bike, Dices } from "lucide-react";
 import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { MenuItem } from "@/lib/types";
+import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -24,6 +27,19 @@ export default function Home() {
   );
 
   const firstItem = latestHistory?.items[0];
+
+  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  const handleItemClick = async (menuItemId: string, name: string) => {
+    const item = await db.menuItems.get(menuItemId);
+    if (item) {
+      setDetailItem(item);
+      setDetailOpen(true);
+    } else {
+      alert(`「${name}」已被删除`);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -98,7 +114,17 @@ export default function Home() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-semibold truncate">
-                  {latestHistory.items.map((i) => i.name).join("、")}
+                  {latestHistory.items.map((i, idx) => (
+                    <span key={i.menuItemId}>
+                      {idx > 0 && "、"}
+                      <button
+                        onClick={() => handleItemClick(i.menuItemId, i.name)}
+                        className="text-primary underline decoration-primary/30 underline-offset-4 active:opacity-70 transition-opacity hover:text-primary/80"
+                      >
+                        {i.name}
+                      </button>
+                    </span>
+                  ))}
                 </div>
                 <div className="text-sm text-muted-foreground">
                   {latestHistory.ruleSnapshot}
@@ -115,6 +141,12 @@ export default function Home() {
           <p>💡 提示：你的所有数据都保存在浏览器本地，请定期到「设置」中导出备份。</p>
         </div>
       </section>
+
+      <MenuItemDetailDialog
+        item={detailItem}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
     </div>
   );
 }

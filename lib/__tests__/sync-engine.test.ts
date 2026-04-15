@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { resetDatabase, db } from "../db";
 import { saveLocalIdentity } from "../supabase";
-import type { Space, Profile, MenuItem } from "../types";
+import type { Space, Profile, MenuItem, Like, Comment } from "../types";
 import {
   createMenuItem,
   updateMenuItem,
@@ -10,10 +10,32 @@ import {
   deleteTag,
   createComboTemplate,
   deleteComboTemplate,
+  enrich,
 } from "../space-ops";
 import { HttpSyncEngine } from "../http-sync-engine";
+import { toggleLike } from "../likes";
+import { addComment } from "../comments";
+import { buildLikeId } from "../like-id";
 
 const ORIGINAL_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+function mockFetchOk(body: unknown) {
+  (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as Response);
+}
+
+function mockFetchError(status: number, body: string) {
+  (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+    ok: false,
+    status,
+    json: async () => ({ error: body }),
+    text: async () => body,
+  } as Response);
+}
 
 const testSpace: Space = {
   id: "space_test_1",
@@ -154,24 +176,6 @@ describe("http-sync-engine", () => {
     vi.unstubAllGlobals();
   });
 
-  function mockFetchOk(body: unknown) {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => body,
-      text: async () => JSON.stringify(body),
-    } as Response);
-  }
-
-  function mockFetchError(status: number, body: string) {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: false,
-      status,
-      json: async () => ({ error: body }),
-      text: async () => body,
-    } as Response);
-  }
-
   it("should return error when pushing without identity", async () => {
     saveLocalIdentity({ space: { ...testSpace, id: "" }, profile: testProfile });
     // empty space id means no real identity
@@ -251,7 +255,7 @@ describe("http-sync-engine", () => {
       if (url.includes("/menu-items")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [remoteItem], text: async () => "" } as Response);
       }
-      if (url.includes("/tags") || url.includes("/combo-templates")) {
+      if (url.includes("/tags") || url.includes("/combo-templates") || url.includes("/likes") || url.includes("/comments")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
       }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
@@ -283,7 +287,7 @@ describe("http-sync-engine", () => {
       if (url.includes("/menu-items")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [remoteItem], text: async () => "" } as Response);
       }
-      if (url.includes("/tags") || url.includes("/combo-templates")) {
+      if (url.includes("/tags") || url.includes("/combo-templates") || url.includes("/likes") || url.includes("/comments")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
       }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
@@ -312,7 +316,7 @@ describe("http-sync-engine", () => {
       if (url.includes("/menu-items")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [remoteItem], text: async () => "" } as Response);
       }
-      if (url.includes("/tags") || url.includes("/combo-templates")) {
+      if (url.includes("/tags") || url.includes("/combo-templates") || url.includes("/likes") || url.includes("/comments")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
       }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
@@ -360,7 +364,7 @@ describe("http-sync-engine", () => {
           text: async () => "",
         } as Response);
       }
-      if (url.includes("/combo-templates")) {
+      if (url.includes("/combo-templates") || url.includes("/likes") || url.includes("/comments")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
       }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
@@ -387,7 +391,7 @@ describe("http-sync-engine", () => {
           text: async () => "",
         } as Response);
       }
-      if (url.includes("/menu-items") || url.includes("/combo-templates")) {
+      if (url.includes("/menu-items") || url.includes("/combo-templates") || url.includes("/likes") || url.includes("/comments")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
       }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
@@ -435,7 +439,7 @@ describe("http-sync-engine", () => {
           text: async () => "",
         } as Response);
       }
-      if (url.includes("/combo-templates")) {
+      if (url.includes("/combo-templates") || url.includes("/likes") || url.includes("/comments")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => [], text: async () => "" } as Response);
       }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
@@ -486,5 +490,335 @@ describe("http-sync-engine", () => {
     expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
       `/api/changelog?space_id=${encodeURIComponent(testSpace.id)}&limit=10`
     );
+  });
+});
+
+describe("http-sync-engine: likes/comments", () => {
+  let engine: HttpSyncEngine;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    saveLocalIdentity({ space: testSpace, profile: testProfile });
+    engine = new HttpSyncEngine();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_API_BASE === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = ORIGINAL_API_BASE;
+    }
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function setupMockFetch(responses: { urlPattern: string; data: unknown }[]) {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      for (const r of responses) {
+        if (url.includes(r.urlPattern)) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => r.data, text: async () => "" } as Response);
+        }
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
+    });
+  }
+
+  // Push tests
+
+  it("should push pending likes", async () => {
+    await toggleLike("item1");
+    mockFetchOk({ success: true, count: 1 });
+    const result = await engine.pushChanges();
+    expect(result.success).toBe(true);
+    const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    const likesCall = fetchCalls.find((c: [string]) => c[0].includes("/sync/likes") && !c[0].includes("/delete"));
+    expect(likesCall).toBeDefined();
+    const localLike = await db.likes.where("menuItemId").equals("item1").first();
+    expect(localLike?.syncStatus).toBe("synced");
+  });
+
+  it("should push pending comments", async () => {
+    await addComment("item1", "好吃！", false);
+    mockFetchOk({ success: true, count: 1 });
+    const result = await engine.pushChanges();
+    expect(result.success).toBe(true);
+    const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    const commentsCall = fetchCalls.find((c: [string]) => c[0].includes("/sync/comments") && !c[0].includes("/delete"));
+    expect(commentsCall).toBeDefined();
+    const localComment = await db.comments.where("menuItemId").equals("item1").first();
+    expect(localComment?.syncStatus).toBe("synced");
+  });
+
+  // Pull merge tests
+
+  it("should pull and merge remote likes (dedup by menuItemId + profileId)", async () => {
+    // Local already likes item1
+    await toggleLike("item1");
+    const localLike = await db.likes.where("menuItemId").equals("item1").first();
+    await db.likes.toCollection().modify({ syncStatus: "synced" });
+
+    const remoteLike: Like = {
+      id: "remote_like_1",
+      menuItemId: "item2",
+      profileId: "other_profile",
+      spaceId: testSpace.id,
+      createdAt: Date.now(),
+      syncStatus: "synced",
+    };
+
+    setupMockFetch([
+      { urlPattern: "/menu-items", data: [] },
+      { urlPattern: "/tags", data: [] },
+      { urlPattern: "/combo-templates", data: [] },
+      { urlPattern: "/likes", data: [
+        // Include the local like in remote to prevent it from being deleted
+        { ...localLike, syncStatus: undefined },
+        remoteLike,
+      ] },
+      { urlPattern: "/comments", data: [] },
+    ]);
+
+    await engine.pullChanges();
+    const allLikes = await db.likes.toArray();
+    // Should have both local (item1) and remote (item2)
+    expect(allLikes).toHaveLength(2);
+    const remote = allLikes.find((l) => l.id === buildLikeId(testSpace.id, "item2", "other_profile"));
+    expect(remote).toBeDefined();
+    expect(remote?.syncStatus).toBe("synced");
+  });
+
+  it("should deduplicate remote like with same menuItemId + profileId", async () => {
+    // Local like on item1
+    await toggleLike("item1");
+    await db.likes.toCollection().modify({ syncStatus: "synced" });
+    const localLike = await db.likes.where("menuItemId").equals("item1").first();
+
+    // Remote sends a like with same menuItemId + profileId but different id
+    const duplicateLike: Like = {
+      id: "remote_dup_like",
+      menuItemId: "item1",
+      profileId: testProfile.id,
+      spaceId: testSpace.id,
+      createdAt: Date.now(),
+      syncStatus: "synced",
+    };
+
+    setupMockFetch([
+      { urlPattern: "/menu-items", data: [] },
+      { urlPattern: "/tags", data: [] },
+      { urlPattern: "/combo-templates", data: [] },
+      { urlPattern: "/likes", data: [duplicateLike] },
+      { urlPattern: "/comments", data: [] },
+    ]);
+
+    // Remote returns only the duplicate, not the local like,
+    // so the local like (same menuItemId+profileId) will be matched by key
+    // and not deleted (since remoteLikeKeys contains the same key)
+
+    await engine.pullChanges();
+    const allLikes = await db.likes.where("menuItemId").equals("item1").toArray();
+    // Should still have only 1 like for item1+profile
+    expect(allLikes).toHaveLength(1);
+    expect(allLikes[0].id).toBe(localLike!.id);
+  });
+
+  it("should pull and merge remote comments (LWW by updatedAt)", async () => {
+    // Local comment
+    await addComment("item1", "原始评论", false);
+    await db.comments.toCollection().modify({ syncStatus: "synced", updatedAt: 1000 });
+    const localComment = await db.comments.where("menuItemId").equals("item1").first();
+
+    // Remote sends same id with newer updatedAt
+    const updatedComment: Comment = {
+      id: localComment!.id,
+      menuItemId: "item1",
+      profileId: testProfile.id,
+      spaceId: testSpace.id,
+      nickname: "测试用户",
+      content: "修改后的评论",
+      isAnonymous: false,
+      createdAt: localComment!.createdAt,
+      updatedAt: 2000,
+      version: 2,
+      syncStatus: "synced",
+    };
+
+    setupMockFetch([
+      { urlPattern: "/menu-items", data: [] },
+      { urlPattern: "/tags", data: [] },
+      { urlPattern: "/combo-templates", data: [] },
+      { urlPattern: "/likes", data: [] },
+      { urlPattern: "/comments", data: [updatedComment] },
+    ]);
+
+    await engine.pullChanges();
+    const comment = await db.comments.get(localComment!.id);
+    expect(comment?.content).toBe("修改后的评论");
+    expect(comment?.syncStatus).toBe("synced");
+  });
+
+  it("should delete local likes that are not in remote", async () => {
+    // Local synced like that was deleted on remote
+    const like = enrich<Like>(
+      { id: "like_to_delete", menuItemId: "item1", createdAt: Date.now() },
+      { syncStatus: "synced" }
+    );
+    await db.likes.add(like);
+
+    // Remote returns no likes for this space
+    setupMockFetch([
+      { urlPattern: "/menu-items", data: [] },
+      { urlPattern: "/tags", data: [] },
+      { urlPattern: "/combo-templates", data: [] },
+      { urlPattern: "/likes", data: [] },
+      { urlPattern: "/comments", data: [] },
+    ]);
+
+    await engine.pullChanges();
+    const remaining = await db.likes.get("like_to_delete");
+    expect(remaining).toBeUndefined();
+  });
+
+  it("should NOT delete pending local likes during pull", async () => {
+    // Local pending like
+    const like = enrich<Like>(
+      { id: "like_pending", menuItemId: "item1", createdAt: Date.now() },
+      { syncStatus: "pending" }
+    );
+    await db.likes.add(like);
+
+    setupMockFetch([
+      { urlPattern: "/menu-items", data: [] },
+      { urlPattern: "/tags", data: [] },
+      { urlPattern: "/combo-templates", data: [] },
+      { urlPattern: "/likes", data: [] },
+      { urlPattern: "/comments", data: [] },
+    ]);
+
+    await engine.pullChanges();
+    const remaining = await db.likes.get("like_pending");
+    expect(remaining).toBeDefined();
+    expect(remaining?.syncStatus).toBe("pending");
+  });
+
+  it("should delete local comments that are not in remote", async () => {
+    const comment = enrich<Comment>(
+      { id: "comment_to_delete", menuItemId: "item1", nickname: "用户", content: "被删评论", isAnonymous: false, createdAt: Date.now() },
+      { syncStatus: "synced" }
+    );
+    await db.comments.add(comment);
+
+    setupMockFetch([
+      { urlPattern: "/menu-items", data: [] },
+      { urlPattern: "/tags", data: [] },
+      { urlPattern: "/combo-templates", data: [] },
+      { urlPattern: "/likes", data: [] },
+      { urlPattern: "/comments", data: [] },
+    ]);
+
+    await engine.pullChanges();
+    const remaining = await db.comments.get("comment_to_delete");
+    expect(remaining).toBeUndefined();
+  });
+
+  it("should NOT delete pending local comments during pull", async () => {
+    const comment = enrich<Comment>(
+      { id: "comment_pending", menuItemId: "item1", nickname: "用户", content: "待同步评论", isAnonymous: false, createdAt: Date.now() },
+      { syncStatus: "pending" }
+    );
+    await db.comments.add(comment);
+
+    setupMockFetch([
+      { urlPattern: "/menu-items", data: [] },
+      { urlPattern: "/tags", data: [] },
+      { urlPattern: "/combo-templates", data: [] },
+      { urlPattern: "/likes", data: [] },
+      { urlPattern: "/comments", data: [] },
+    ]);
+
+    await engine.pullChanges();
+    const remaining = await db.comments.get("comment_pending");
+    expect(remaining).toBeDefined();
+  });
+
+  // fetchProfiles tests
+
+  it("should fetch profiles from remote", async () => {
+    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    const remoteProfiles = [
+      { id: "p1", spaceId: testSpace.id, nickname: "Alice", joinedAt: Date.now() },
+      { id: "p2", spaceId: testSpace.id, nickname: "Bob", joinedAt: Date.now() },
+    ];
+    mockFetchOk(remoteProfiles);
+
+    const profiles = await engine.fetchProfiles();
+    expect(profiles).toHaveLength(2);
+    expect(profiles[0].nickname).toBe("Alice");
+  });
+
+  it("should return empty array when no space identity for fetchProfiles", async () => {
+    localStorage.removeItem("hyet_profile_v1");
+    localStorage.removeItem("hyet_space_v1");
+    const profiles = await engine.fetchProfiles();
+    expect(profiles).toHaveLength(0);
+  });
+
+  it("should cache profiles within TTL", async () => {
+    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    const remoteProfiles = [
+      { id: "p1", spaceId: testSpace.id, nickname: "Alice", joinedAt: Date.now() },
+    ];
+    mockFetchOk(remoteProfiles);
+
+    await engine.fetchProfiles();
+    await engine.fetchProfiles();
+
+    // fetch should only be called once due to cache
+    const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: [string]) => c[0].includes("/sync/profiles")
+    );
+    expect(fetchCalls).toHaveLength(1);
+  });
+
+  // Pending count tests
+
+  it("should count pending likes in sync status", async () => {
+    await toggleLike("item1");
+    const status = await engine.getSyncStatus();
+    expect(status.pendingCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("should count pending comments in sync status", async () => {
+    await addComment("item1", "测试评论", false);
+    const status = await engine.getSyncStatus();
+    expect(status.pendingCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("should clear deterministic like deletions when remote already has no row", async () => {
+    const likeId = buildLikeId(testSpace.id, "item1", testProfile.id);
+    await db.pendingDeletions.add({
+      tableName: "likes",
+      recordId: likeId,
+      spaceId: testSpace.id,
+      createdAt: Date.now(),
+    });
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.includes("/sync/likes/delete")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, deleted: 0, deletedIds: [], missingIds: [likeId] }),
+          text: async () => "",
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response);
+    });
+
+    const result = await engine.pushChanges();
+    expect(result.success).toBe(true);
+    const pending = await db.pendingDeletions.where({ tableName: "likes", recordId: likeId }).count();
+    expect(pending).toBe(0);
   });
 });

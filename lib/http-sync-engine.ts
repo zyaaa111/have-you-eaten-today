@@ -1,9 +1,10 @@
 import { db } from "./db";
-import type { MenuItem, Tag, ComboTemplate, ChangeLog } from "./types";
+import type { MenuItem, Tag, ComboTemplate, Like, Comment, ChangeLog, Profile } from "./types";
 import type { SyncService, SyncPayload, SyncResult, SyncStatus as SyncServiceStatus } from "./sync-service";
 import { getLocalIdentity } from "./supabase";
 import { buildApiUrl } from "./api-base";
 import { sanitizeMenuItemRecord, sanitizeMenuItemSnapshot } from "./menu-item-sanitize";
+import { buildLikeId, isDeterministicLikeId } from "./like-id";
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const url = buildApiUrl(path);
@@ -23,6 +24,13 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`HTTP ${res.status}: ${preview}`);
   }
   return res.json() as Promise<T>;
+}
+
+interface DeleteResponse {
+  success?: boolean;
+  deleted?: number;
+  deletedIds?: string[];
+  missingIds?: string[];
 }
 
 function toSnake(obj: Record<string, unknown>): Record<string, unknown> {
@@ -53,6 +61,8 @@ export class HttpSyncEngine implements SyncService {
         menu_items: "menu-items",
         tags: "tags",
         combo_templates: "combo-templates",
+        likes: "likes",
+        comments: "comments",
       };
       const path = tableMap[del.tableName];
       if (!path) continue;
@@ -62,11 +72,24 @@ export class HttpSyncEngine implements SyncService {
 
     for (const [path, ids] of Object.entries(deletionsByTable)) {
       try {
-        await api(`/sync/${path}/delete`, {
+        const response = await api<DeleteResponse>(`/sync/${path}/delete`, {
           method: "POST",
           body: JSON.stringify({ ids, space_id: spaceId }),
         });
-        for (const id of ids) {
+        const clearedIds = new Set(response.deletedIds ?? []);
+        if (path === "likes") {
+          for (const id of response.missingIds ?? []) {
+            if (isDeterministicLikeId(id)) {
+              clearedIds.add(id);
+            }
+          }
+        } else {
+          for (const id of response.missingIds ?? []) {
+            clearedIds.add(id);
+          }
+        }
+
+        for (const id of Array.from(clearedIds)) {
           await db.pendingDeletions.where({ tableName: mapPathToTableName(path), recordId: id }).delete();
         }
       } catch (e) {
@@ -179,6 +202,71 @@ export class HttpSyncEngine implements SyncService {
       }
     }
 
+    // 5. Pending likes
+    const pendingLikes = await db.likes
+      .where({ spaceId })
+      .and((x) => x.syncStatus === "pending")
+      .toArray();
+    if (pendingLikes.length > 0) {
+      try {
+        await api("/sync/likes", {
+          method: "POST",
+          body: JSON.stringify(
+            pendingLikes.map((item) =>
+              toSnake({
+                id: item.id,
+                menu_item_id: item.menuItemId,
+                profile_id: item.profileId,
+                space_id: spaceId,
+                created_at: item.createdAt,
+              })
+            )
+          ),
+        });
+        for (const item of pendingLikes) {
+          await db.likes.update(item.id, { syncStatus: "synced" });
+        }
+      } catch (e) {
+        console.error("Likes sync failed:", e);
+        conflicts.push(...pendingLikes.map((i) => `like:${i.id}`));
+      }
+    }
+
+    // 6. Pending comments
+    const pendingComments = await db.comments
+      .where({ spaceId })
+      .and((x) => x.syncStatus === "pending")
+      .toArray();
+    if (pendingComments.length > 0) {
+      try {
+        await api("/sync/comments", {
+          method: "POST",
+          body: JSON.stringify(
+            pendingComments.map((item) =>
+              toSnake({
+                id: item.id,
+                menu_item_id: item.menuItemId,
+                profile_id: item.profileId,
+                space_id: spaceId,
+                nickname: item.nickname,
+                content: item.content,
+                is_anonymous: item.isAnonymous ? 1 : 0,
+                created_at: item.createdAt,
+                updated_at: item.updatedAt,
+                version: item.version ?? 1,
+              })
+            )
+          ),
+        });
+        for (const item of pendingComments) {
+          await db.comments.update(item.id, { syncStatus: "synced" });
+        }
+      } catch (e) {
+        console.error("Comments sync failed:", e);
+        conflicts.push(...pendingComments.map((i) => `comment:${i.id}`));
+      }
+    }
+
     if (conflicts.length > 0) {
       return { success: false, error: `部分记录同步冲突: ${conflicts.join(", ")}` };
     }
@@ -192,10 +280,12 @@ export class HttpSyncEngine implements SyncService {
     }
     const spaceId = identity.space.id;
 
-    const [menuItems, tags, comboTemplates] = await Promise.all([
+    const [menuItems, tags, comboTemplates, likes, comments] = await Promise.all([
       api<MenuItem[]>(`/sync/menu-items?space_id=${encodeURIComponent(spaceId)}`),
       api<Tag[]>(`/sync/tags?space_id=${encodeURIComponent(spaceId)}`),
       api<ComboTemplate[]>(`/sync/combo-templates?space_id=${encodeURIComponent(spaceId)}`),
+      api<Like[]>(`/sync/likes?space_id=${encodeURIComponent(spaceId)}`),
+      api<Comment[]>(`/sync/comments?space_id=${encodeURIComponent(spaceId)}`),
     ]);
     const sanitizedMenuItems = menuItems.map(
       (item) => sanitizeMenuItemRecord(item as unknown as Record<string, unknown>) as unknown as MenuItem
@@ -254,6 +344,55 @@ export class HttpSyncEngine implements SyncService {
       }
     });
 
+    // 5. Process likes (unique by menuItemId + profileId)
+    for (const remote of likes) {
+      const normalizedRemote = remote.spaceId
+        ? { ...remote, id: buildLikeId(remote.spaceId, remote.menuItemId, remote.profileId) }
+        : remote;
+      const existing = await db.likes
+        .where("[menuItemId+profileId]")
+        .equals([normalizedRemote.menuItemId, normalizedRemote.profileId])
+        .first();
+      if (!existing) {
+        await db.likes.add({ ...normalizedRemote, syncStatus: "synced" });
+      } else if (existing.id !== normalizedRemote.id && existing.syncStatus !== "pending") {
+        await db.likes.delete(existing.id);
+        await db.likes.add({ ...normalizedRemote, syncStatus: "synced" });
+      }
+    }
+
+    // Delete likes that exist locally but not remotely (and not pending)
+    const remoteLikeKeys = new Set(likes.map((l) => `${l.menuItemId}:${l.profileId}`));
+    const localLikes = await db.likes.where("spaceId").equals(spaceId).toArray();
+    const likesToDelete = localLikes
+      .filter((local) => local.syncStatus !== "pending" && !remoteLikeKeys.has(`${local.menuItemId}:${local.profileId}`))
+      .map((local) => local.id);
+    if (likesToDelete.length > 0) {
+      await db.likes.bulkDelete(likesToDelete);
+    }
+
+    // 6. Process comments (LWW by updatedAt)
+    for (const remote of comments) {
+      const local = await db.comments.get(remote.id);
+      if (!local) {
+        await db.comments.add({ ...remote, syncStatus: "synced" });
+      } else if (local.syncStatus !== "pending" && local.syncStatus !== "conflict") {
+        if ((remote.updatedAt ?? remote.createdAt) > (local.updatedAt ?? local.createdAt)) {
+          await db.comments.put({ ...remote, syncStatus: "synced" });
+        }
+      }
+    }
+
+    // Delete comments that exist locally but not remotely (and not pending)
+    const remoteCommentIds = new Set(comments.map((c) => c.id));
+    const localComments = await db.comments.where("spaceId").equals(spaceId).toArray();
+    const commentsToDelete = localComments
+      .filter((local) => local.syncStatus !== "pending" && !remoteCommentIds.has(local.id))
+      .map((local) => local.id);
+    if (commentsToDelete.length > 0) {
+      await db.comments.bulkDelete(commentsToDelete);
+    }
+
     return { menuItems: sanitizedMenuItems, tags, comboTemplates };
   }
 
@@ -263,13 +402,15 @@ export class HttpSyncEngine implements SyncService {
       return { pendingCount: 0, lastSyncedAt: undefined };
     }
     const spaceId = identity.space.id;
-    const [pendingMenu, pendingTags, pendingTemplates, pendingDel] = await Promise.all([
+    const [pendingMenu, pendingTags, pendingTemplates, pendingDel, pendingLikes, pendingComments] = await Promise.all([
       db.menuItems.where({ spaceId }).and((x) => x.syncStatus === "pending").count(),
       db.tags.where({ spaceId }).and((x) => x.syncStatus === "pending").count(),
       db.comboTemplates.where({ spaceId }).and((x) => x.syncStatus === "pending").count(),
       db.pendingDeletions.where({ spaceId }).count(),
+      db.likes.where({ spaceId }).and((x) => x.syncStatus === "pending").count(),
+      db.comments.where({ spaceId }).and((x) => x.syncStatus === "pending").count(),
     ]);
-    const pendingCount = pendingMenu + pendingTags + pendingTemplates + pendingDel;
+    const pendingCount = pendingMenu + pendingTags + pendingTemplates + pendingDel + pendingLikes + pendingComments;
     return { pendingCount, lastSyncedAt: Date.now() };
   }
 
@@ -296,6 +437,22 @@ export class HttpSyncEngine implements SyncService {
     return sanitizeChangeLogs(logs);
   }
 
+  private profilesCache: { spaceId: string; profiles: Profile[]; timestamp: number } | null = null;
+  private static PROFILES_CACHE_TTL = 60_000; // 1 minute
+
+  async fetchProfiles(spaceId?: string): Promise<Profile[]> {
+    const identity = getLocalIdentity();
+    const sid = spaceId ?? identity?.space.id;
+    if (!sid) return [];
+    const cached = this.profilesCache;
+    if (cached && cached.spaceId === sid && Date.now() - cached.timestamp < HttpSyncEngine.PROFILES_CACHE_TTL) {
+      return cached.profiles;
+    }
+    const profiles = await api<Profile[]>(`/sync/profiles?space_id=${encodeURIComponent(sid)}`);
+    this.profilesCache = { spaceId: sid, profiles, timestamp: Date.now() };
+    return profiles;
+  }
+
   subscribeToChanges(callback: () => void): { unsubscribe: () => void } {
     const interval = setInterval(() => {
       callback();
@@ -306,10 +463,13 @@ export class HttpSyncEngine implements SyncService {
   }
 }
 
-function mapPathToTableName(path: string): "menu_items" | "tags" | "combo_templates" {
+function mapPathToTableName(path: string): "menu_items" | "tags" | "combo_templates" | "likes" | "comments" {
   if (path === "menu-items") return "menu_items";
   if (path === "tags") return "tags";
-  return "combo_templates";
+  if (path === "combo-templates") return "combo_templates";
+  if (path === "likes") return "likes";
+  if (path === "comments") return "comments";
+  throw new Error(`Unknown sync path: ${path}`);
 }
 
 function resolveTagIds(tagIds: string[] | undefined, mappings: Map<string, string>): string[] {

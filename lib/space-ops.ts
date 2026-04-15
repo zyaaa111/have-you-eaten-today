@@ -14,7 +14,7 @@ export function hasSpace(): boolean {
   return !!getLocalIdentity();
 }
 
-function enrich<T extends { spaceId?: string; profileId?: string; syncStatus?: string; version?: number }>(
+export function enrich<T extends { spaceId?: string; profileId?: string; syncStatus?: string; version?: number }>(
   obj: Omit<T, "spaceId" | "profileId" | "syncStatus" | "version">,
   overrides?: Partial<T>
 ): T {
@@ -49,16 +49,20 @@ export async function updateMenuItem(id: string, changes: Partial<MenuItem>): Pr
 
 export async function deleteMenuItem(id: string): Promise<void> {
   const spaceId = getCurrentSpaceId();
-  await db.menuItems.delete(id);
-  await db.personalWeights.where({ menuItemId: id }).delete();
-  if (spaceId) {
-    await db.pendingDeletions.add({
-      tableName: "menu_items",
-      recordId: id,
-      spaceId,
-      createdAt: Date.now(),
-    });
-  }
+  await db.transaction("rw", [db.menuItems, db.personalWeights, db.likes, db.comments, db.pendingDeletions], async () => {
+    await db.menuItems.delete(id);
+    await db.personalWeights.where({ menuItemId: id }).delete();
+    await db.likes.where({ menuItemId: id }).delete();
+    await db.comments.where({ menuItemId: id }).delete();
+    if (spaceId) {
+      await db.pendingDeletions.add({
+        tableName: "menu_items",
+        recordId: id,
+        spaceId,
+        createdAt: Date.now(),
+      });
+    }
+  });
 }
 
 // Tags

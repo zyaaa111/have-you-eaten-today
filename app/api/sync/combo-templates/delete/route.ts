@@ -7,6 +7,6 @@ export async function POST(request: NextRequest) {
   if (!Array.isArray(ids) || !space_id) {
     return NextResponse.json({ error: "缺少 ids 或 space_id" }, { status: 400 });
   }
-  deleteFromTable("combo_templates", ids, space_id);
-  return NextResponse.json({ success: true, deleted: ids.length });
+  const { deletedIds, missingIds } = deleteFromTable("combo_templates", ids, space_id);
+  return NextResponse.json({ success: true, deleted: deletedIds.length, deletedIds, missingIds });
 }

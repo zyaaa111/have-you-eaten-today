@@ -123,13 +123,38 @@ export interface ChangeLog {
   id: string;
   spaceId: string;
   profileId: string;
-  tableName: "menu_items" | "tags" | "combo_templates";
+  actorNickname?: string | null;
+  tableName: "menu_items" | "tags" | "combo_templates" | "likes" | "comments";
   recordId: string;
   operation: ChangeLogOperation;
   beforeSnapshot?: Record<string, unknown> | null;
   afterSnapshot?: Record<string, unknown> | null;
   version: number;
   createdAt: number;
+}
+
+export interface Like {
+  id: string;
+  menuItemId: string;
+  profileId: string;
+  spaceId?: string;
+  createdAt: number;
+  syncStatus?: SyncStatus;
+  version?: number;
+}
+
+export interface Comment {
+  id: string;
+  menuItemId: string;
+  profileId: string;
+  spaceId?: string;
+  nickname: string;
+  content: string;
+  isAnonymous: boolean;
+  createdAt: number;
+  updatedAt?: number;
+  syncStatus?: SyncStatus;
+  version?: number;
 }
 
 export interface PersonalWeight {

@@ -5,14 +5,17 @@ import {
   RollHistory,
   ComboTemplate,
   PersonalWeight,
+  Like,
+  Comment,
 } from "./types";
+import { buildLikeId } from "./like-id";
 
 export const DB_NAME = "HaveYouEatenTodayDB";
-export const DB_VERSION = 9;
+export const DB_VERSION = 11;
 
 export interface PendingDeletion {
   id?: number;
-  tableName: "menu_items" | "tags" | "combo_templates";
+  tableName: "menu_items" | "tags" | "combo_templates" | "likes" | "comments";
   recordId: string;
   spaceId: string;
   createdAt: number;
@@ -35,6 +38,8 @@ export class AppDatabase extends Dexie {
   tagMappings!: Table<TagMapping, number>;
   avoidances!: Table<{ id?: number; menuItemId: string }, number>;
   personalWeights!: Table<PersonalWeight, number>;
+  likes!: Table<Like, string>;
+  comments!: Table<Comment, string>;
 
   constructor(name = DB_NAME) {
     super(name);
@@ -177,6 +182,53 @@ export class AppDatabase extends Dexie {
         delete item.weight;
       });
     });
+
+    this.version(10).stores({
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+      avoidances: "++id, menuItemId",
+      personalWeights: "++id, menuItemId",
+      likes: "id, menuItemId, profileId, spaceId, [menuItemId+profileId], [spaceId+syncStatus]",
+      comments: "id, menuItemId, profileId, spaceId, createdAt, [spaceId+syncStatus]",
+    });
+
+    this.version(11).stores({
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+      avoidances: "++id, menuItemId",
+      personalWeights: "++id, menuItemId",
+      likes: "id, menuItemId, profileId, spaceId, [menuItemId+profileId], [spaceId+syncStatus]",
+      comments: "id, menuItemId, profileId, spaceId, createdAt, [spaceId+syncStatus]",
+    }).upgrade(async (tx) => {
+      const likesTable = tx.table("likes");
+      const likes = await likesTable.toArray() as Like[];
+      if (likes.length === 0) return;
+
+      const normalized = new Map<string, Like>();
+      for (const like of likes) {
+        const canonicalId = like.spaceId && like.profileId
+          ? buildLikeId(like.spaceId, like.menuItemId, like.profileId)
+          : like.id;
+        const candidate = { ...like, id: canonicalId };
+        const existing = normalized.get(canonicalId);
+        if (!existing || preferLike(candidate, existing)) {
+          normalized.set(canonicalId, candidate);
+        }
+      }
+
+      await likesTable.clear();
+      await likesTable.bulkAdd(Array.from(normalized.values()));
+    });
   }
 }
 
@@ -192,4 +244,22 @@ export async function resetDatabase() {
   await db.tagMappings.clear();
   await db.avoidances.clear();
   await db.personalWeights.clear();
+  await db.likes.clear();
+  await db.comments.clear();
+}
+
+function preferLike(candidate: Like, existing: Like): boolean {
+  const candidateScore = getSyncPriority(candidate.syncStatus);
+  const existingScore = getSyncPriority(existing.syncStatus);
+  if (candidateScore !== existingScore) {
+    return candidateScore > existingScore;
+  }
+  return candidate.createdAt < existing.createdAt;
+}
+
+function getSyncPriority(status: Like["syncStatus"]): number {
+  if (status === "pending") return 3;
+  if (status === "conflict") return 2;
+  if (status === "synced") return 1;
+  return 0;
 }

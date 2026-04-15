@@ -2,7 +2,7 @@ import { db, resetDatabase } from "./db";
 import { AppExport, MenuItem, PersonalWeight } from "./types";
 
 const CURRENT_SCHEMA_VERSION = "1.0.0";
-const CURRENT_APP_VERSION = "1.0.6";
+const CURRENT_APP_VERSION = "1.1.0";
 
 type LegacyMenuItem = MenuItem & {
   weight?: number;

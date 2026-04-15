@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { clearRollHistory, rollSingle, rollCombo } from "@/lib/roll";
 import { ChefHat, Bike, Trash2, Dices } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MenuItem } from "@/lib/types";
+import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -42,6 +44,18 @@ export default function HistoryPage() {
   const history = useLiveQuery(() => db.rollHistory.orderBy("rolledAt").reverse().toArray(), []) || [];
   const templates = useLiveQuery(() => db.comboTemplates.toArray(), []) || [];
   const [replacing, setReplacing] = useState(false);
+  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  const handleItemClick = async (menuItemId: string, name: string) => {
+    const item = await db.menuItems.get(menuItemId);
+    if (item) {
+      setDetailItem(item);
+      setDetailOpen(true);
+    } else {
+      alert(`「${name}」已被删除`);
+    }
+  };
 
   const grouped = useMemo(() => {
     const map = new Map<string, typeof history>();
@@ -153,13 +167,14 @@ export default function HistoryPage() {
 
                       <div className="flex flex-wrap gap-2">
                         {record.items.map((item, idx) => (
-                          <div
+                          <button
                             key={idx}
+                            onClick={() => handleItemClick(item.menuItemId, item.name)}
                             className={cn(
-                              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm",
+                              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm active:bg-white/50 transition-colors cursor-pointer",
                               item.kind === "recipe"
-                                ? "bg-orange-50 text-orange-700 border-orange-100"
-                                : "bg-blue-50 text-blue-700 border-blue-100"
+                                ? "bg-orange-50 text-orange-700 border-orange-100 hover:bg-orange-100"
+                                : "bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100"
                             )}
                           >
                             {item.kind === "recipe" ? (
@@ -171,7 +186,7 @@ export default function HistoryPage() {
                             {item.shop && (
                               <span className="text-xs opacity-80">· {item.shop}</span>
                             )}
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -182,6 +197,12 @@ export default function HistoryPage() {
           })}
         </div>
       )}
+
+      <MenuItemDetailDialog
+        item={detailItem}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
     </div>
   );
 }

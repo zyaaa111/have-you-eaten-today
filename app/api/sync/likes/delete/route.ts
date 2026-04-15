@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { deleteFromTable } from "@/lib/sync-api";
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json()) as { ids?: string[]; space_id?: string };
-  const { ids, space_id } = body;
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
+  }
+  const { ids, space_id } = body as { ids?: string[]; space_id?: string };
   if (!Array.isArray(ids) || !space_id) {
     return NextResponse.json({ error: "缺少 ids 或 space_id" }, { status: 400 });
   }
-  const { deletedIds, missingIds } = deleteFromTable("menu_items", ids, space_id);
+  const { deletedIds, missingIds } = deleteFromTable("likes", ids, space_id);
   return NextResponse.json({ success: true, deleted: deletedIds.length, deletedIds, missingIds });
 }

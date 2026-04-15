@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { MenuItem, MenuItemKind, TagType } from "@/lib/types";
@@ -11,9 +11,10 @@ import { getAvoidedIds, toggleAvoidance } from "@/lib/avoidances";
 import { deleteMenuItem } from "@/lib/space-ops";
 import { getWeightsMap } from "@/lib/weights";
 import { syncEngine } from "@/lib/sync-engine";
-import { Plus, Search, ChefHat, Bike, Tag as TagIcon, Heart, Trash2, X, Ban } from "lucide-react";
+import { getLikesCountByMenuItems } from "@/lib/likes";
+import { getCommentsCountByMenuItems } from "@/lib/comments";
+import { Plus, Search, ChefHat, Bike, Tag as TagIcon, Heart, Trash2, X, Ban, ThumbsUp, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
 
 const typeLabels: Record<TagType, string> = {
   cuisine: "菜系",
@@ -45,6 +46,8 @@ export default function MenuPage() {
   const [weightMap, setWeightMap] = useState<Record<string, number>>({});
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [sortField, setSortField] = useState<"default" | "likeCount" | "commentCount">("default");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     getWishIds().then(setWishIds);
@@ -63,8 +66,19 @@ export default function MenuPage() {
     }
   }, [menuItems]);
 
+  const menuItemIds = useMemo(() => menuItems.map((item) => item.id), [menuItems]);
+  const menuItemIdsKey = JSON.stringify(menuItemIds);
+  const likeCountMap = useLiveQuery(
+    () => getLikesCountByMenuItems(menuItemIds),
+    [menuItemIdsKey]
+  ) ?? {};
+  const commentCountMap = useLiveQuery(
+    () => getCommentsCountByMenuItems(menuItemIds),
+    [menuItemIdsKey]
+  ) ?? {};
+
   const filteredItems = useMemo(() => {
-    return menuItems.filter((item) => {
+    const filtered = menuItems.filter((item) => {
       if (kindFilter !== "all" && item.kind !== kindFilter) return false;
       if (selectedTagIds.length > 0 && !selectedTagIds.some((id) => item.tags.includes(id))) return false;
       if (search.trim()) {
@@ -75,7 +89,13 @@ export default function MenuPage() {
       }
       return true;
     });
-  }, [menuItems, kindFilter, selectedTagIds, search]);
+    if (sortField === "default") return filtered;
+    return [...filtered].sort((a, b) => {
+      const va = sortField === "likeCount" ? (likeCountMap[a.id] ?? 0) : (commentCountMap[a.id] ?? 0);
+      const vb = sortField === "likeCount" ? (likeCountMap[b.id] ?? 0) : (commentCountMap[b.id] ?? 0);
+      return sortDirection === "desc" ? vb - va : va - vb;
+    });
+  }, [menuItems, kindFilter, selectedTagIds, search, sortField, sortDirection, likeCountMap, commentCountMap]);
 
   const groupedTags = useMemo(() => {
     const g: Record<TagType, typeof allTags> = { cuisine: [], category: [], custom: [] };
@@ -247,7 +267,7 @@ export default function MenuPage() {
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           {(["all", "recipe", "takeout"] as const).map((k) => (
             <button
               key={k}
@@ -261,6 +281,21 @@ export default function MenuPage() {
               {k === "all" ? "全部" : k === "recipe" ? "菜谱" : "外卖"}
             </button>
           ))}
+          <select
+            value={`${sortField}:${sortDirection}`}
+            onChange={(e) => {
+              const [f, d] = e.target.value.split(":") as ["default" | "likeCount" | "commentCount", "asc" | "desc"];
+              setSortField(f);
+              setSortDirection(d);
+            }}
+            className="rounded-md border bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary/20"
+          >
+            <option value="default:desc">默认排序</option>
+            <option value="likeCount:desc">点赞数 ↓</option>
+            <option value="likeCount:asc">点赞数 ↑</option>
+            <option value="commentCount:desc">评论数 ↓</option>
+            <option value="commentCount:asc">评论数 ↑</option>
+          </select>
         </div>
 
         <div className="space-y-2">
@@ -444,6 +479,21 @@ export default function MenuPage() {
                     <span>{item.steps?.length || 0} 个步骤</span>
                   </div>
                 )}
+
+                {(likeCountMap[item.id] || commentCountMap[item.id]) ? (
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {likeCountMap[item.id] > 0 && (
+                      <span className="flex items-center gap-0.5">
+                        <ThumbsUp className="w-3 h-3" /> {likeCountMap[item.id]}
+                      </span>
+                    )}
+                    {commentCountMap[item.id] > 0 && (
+                      <span className="flex items-center gap-0.5">
+                        <MessageCircle className="w-3 h-3" /> {commentCountMap[item.id]}
+                      </span>
+                    )}
+                  </div>
+                ) : null}
               </div>
             );
           })}

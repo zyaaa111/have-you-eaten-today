@@ -10,6 +10,14 @@ function formatTime(ts: number) {
   return new Date(ts).toLocaleString("zh-CN");
 }
 
+const tableLabels: Record<ChangeLog["tableName"], string> = {
+  menu_items: "菜单",
+  tags: "标签",
+  combo_templates: "模板",
+  likes: "点赞",
+  comments: "评论",
+};
+
 function getRecordName(log: ChangeLog): string {
   const snap = log.afterSnapshot || log.beforeSnapshot;
   if (snap && typeof snap.name === "string") return snap.name;
@@ -123,8 +131,11 @@ export default function ChangeLogPage() {
                     {log.operation === "delete" && <Trash2 className="w-4 h-4 text-red-600" />}
                     <span className="font-medium">{name}</span>
                     <span className="text-xs text-muted-foreground">
-                      {log.tableName === "menu_items" ? "菜单" : log.tableName === "tags" ? "标签" : "模板"}
+                      {tableLabels[log.tableName]}
                     </span>
+                    {log.actorNickname && (
+                      <span className="text-xs text-muted-foreground">· {log.actorNickname}</span>
+                    )}
                   </div>
                   <span className="text-xs text-muted-foreground">{formatTime(log.createdAt)}</span>
                 </div>

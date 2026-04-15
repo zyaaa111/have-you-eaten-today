@@ -5,13 +5,15 @@ import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { MenuItem, TagType, ChangeLog } from "@/lib/types";
 import { Modal } from "@/components/ui/modal";
-import { ChefHat, Bike, Pencil, Trash2, Heart, History, RotateCcw, X, Ban } from "lucide-react";
+import { ChefHat, Bike, Pencil, Trash2, Heart, History, RotateCcw, X, Ban, ThumbsUp } from "lucide-react";
 import { getWishIds, toggleWishId } from "@/lib/wishlist";
 import { isAvoided, toggleAvoidance } from "@/lib/avoidances";
 import { syncEngine } from "@/lib/sync-engine";
 import { updateMenuItem } from "@/lib/space-ops";
 import { getWeight } from "@/lib/weights";
 import { buildMenuItemRestorePayload } from "@/lib/menu-item-sanitize";
+import { toggleLike, isLikedByCurrentUser } from "@/lib/likes";
+import { CommentSection } from "@/components/comment-section";
 
 interface MenuItemDetailDialogProps {
   item: MenuItem | null;
@@ -48,6 +50,17 @@ export function MenuItemDetailDialog({
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [personalWeight, setPersonalWeight] = useState<number | undefined>(undefined);
+  const [likeLoading, setLikeLoading] = useState(false);
+
+  const likesCount = useLiveQuery(async () => {
+    if (!item) return 0;
+    return db.likes.where("menuItemId").equals(item.id).count();
+  }, [item?.id]) ?? 0;
+
+  const isLiked = useLiveQuery(async () => {
+    if (!item) return false;
+    return isLikedByCurrentUser(item.id);
+  }, [item?.id]) ?? false;
 
   useEffect(() => {
     if (open && item) {
@@ -99,6 +112,18 @@ export function MenuItemDetailDialog({
     setIsWished(wished);
   };
 
+  const handleToggleLike = async () => {
+    if (!item) return;
+    setLikeLoading(true);
+    try {
+      await toggleLike(item.id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "操作失败");
+    } finally {
+      setLikeLoading(false);
+    }
+  };
+
   const handleRestore = async (snapshot: Record<string, unknown>) => {
     if (!item) return;
     const ok = confirm(`确定恢复到此版本吗？当前版本将被覆盖，但也会保留在历史记录中。`);
@@ -146,6 +171,18 @@ export function MenuItemDetailDialog({
               >
                 <Heart className={`w-4 h-4 inline-block mr-1 align-text-bottom ${isWished ? "fill-current" : ""}`} />
                 想吃
+              </button>
+              <button
+                onClick={handleToggleLike}
+                disabled={likeLoading}
+                className={`flex-1 min-w-[72px] min-h-[44px] justify-center rounded-md border px-2 py-2 text-xs font-medium transition-transform active:scale-95 sm:flex-initial sm:px-4 sm:py-2 sm:text-sm ${
+                  isLiked
+                    ? "border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100"
+                    : "bg-background hover:bg-muted"
+                }`}
+              >
+                <ThumbsUp className={`w-4 h-4 inline-block mr-1 align-text-bottom ${isLiked ? "fill-current" : ""}`} />
+                {likesCount > 0 ? likesCount : "赞"}
               </button>
               <button
                 onClick={async () => {
@@ -300,6 +337,11 @@ export function MenuItemDetailDialog({
                 </div>
               </>
             )}
+
+            {/* Comment Section */}
+            <div className="border-t pt-4 mt-4">
+              <CommentSection menuItemId={item.id} />
+            </div>
           </>
         ) : (
           <div className="space-y-4">
@@ -331,6 +373,7 @@ export function MenuItemDetailDialog({
                         {log.operation === "create" && "创建"}
                         {log.operation === "update" && "修改"}
                         {log.operation === "delete" && "删除"}
+                        {log.actorNickname && ` · ${log.actorNickname}`}
                       </span>
                       <span>{new Date(log.createdAt).toLocaleString("zh-CN")}</span>
                     </div>

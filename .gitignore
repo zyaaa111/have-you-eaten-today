@@ -39,6 +39,9 @@ CLAUDE.md
 *.swo
 *.tsbuildinfo
 
+# Local/private docs
+项目功能文档.md
+
 # Testing
 coverage
 .nyc_output

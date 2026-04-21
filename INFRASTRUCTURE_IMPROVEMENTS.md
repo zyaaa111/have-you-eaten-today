@@ -116,8 +116,11 @@ Vitest 测试 stderr 中多次出现 Dexie 警告：
 - 所有针对 `main` / `master` 分支的 Pull Request
 
 **覆盖率报告上传**：
-- 使用 `actions/upload-artifact@v4` 将 `coverage/` 目录作为 artifact 上传
+- 使用 `actions/upload-artifact@v5` 将 `coverage/` 目录作为 artifact 上传
 - 即使测试失败也会保留报告（`if: always()`）
+
+**Action runtime**：
+- 使用 `actions/checkout@v5`、`actions/setup-node@v5`、`actions/upload-artifact@v5`，避免 Node.js 20 action runtime 弃用警告
 
 ### 2.2 Vitest 覆盖率报告与阈值检查
 

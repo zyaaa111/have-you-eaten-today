@@ -10,6 +10,7 @@
 
 ### 🛠️ 基础设施
 - 新增 GitHub Actions CI，覆盖 lint、类型检查、单元测试覆盖率、构建和 Playwright E2E。
+- CI 使用 `actions/checkout@v5`、`actions/setup-node@v5`、`actions/upload-artifact@v5`，避免新增流水线带入 Node.js 20 action runtime 弃用风险。
 - 新增 Vitest 覆盖率报告与阈值检查，并提供稳定的 `npm run test:coverage` 命令。
 - 新增 Next.js ESLint 配置，避免 CI 中 `next lint` 进入交互式初始化。
 - 为 Dexie `pendingDeletions` 增加 `[tableName+recordId]` 复合索引，消除同步删除查询性能警告。

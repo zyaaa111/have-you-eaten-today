@@ -9,6 +9,27 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     exclude: ["e2e/**", "node_modules/**", "dist/**", ".next/**"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json", "html"],
+      thresholds: {
+        statements: 55,
+        branches: 40,
+        functions: 55,
+        lines: 55,
+      },
+      exclude: [
+        "node_modules/**",
+        "dist/**",
+        ".next/**",
+        "**/*.config.*",
+        "**/*.d.ts",
+        "scripts/**",
+        "e2e/**",
+        "lib/__tests__/**",
+        "lib/seed.ts",
+      ],
+    },
   },
   resolve: {
     alias: {

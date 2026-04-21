@@ -1,4 +1,5 @@
 "use client";
+import { reportSyncError } from "@/lib/error-monitor";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
@@ -168,7 +169,7 @@ export default function RandomPage() {
           setSharedRecommendations(data);
         }
       } catch (error) {
-        console.error("Shared recommendations failed:", error);
+        reportSyncError("Shared recommendations failed", { error: String(error) });
         if (active) {
           setSharedRecommendations([]);
         }

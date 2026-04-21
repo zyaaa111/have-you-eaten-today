@@ -2,6 +2,7 @@ import { db } from "./db";
 import { buildApiUrl } from "./api-base";
 import { getLocalSessionUser } from "./auth-client";
 import { getCurrentPrivateScope, isRecordInScope } from "./private-scope";
+import { reportSyncError } from "./error-monitor";
 import { PROFILE_SYNCED_SETTING_KEYS, normalizeProfileSetting, notifySettingsChanged } from "./syncable-settings";
 import type {
   AppSettingRecord,
@@ -267,7 +268,7 @@ export function scheduleProfileStateSync(
   const changes = typeof changeOrDelay === "number" ? undefined : changeOrDelay;
   const nextDelay = typeof changeOrDelay === "number" ? changeOrDelay : delay;
   void queueProfileStateDirty(changes).catch((error) => {
-    console.error("Profile state dirty marker failed:", error);
+    reportSyncError("Profile state dirty marker failed", { error: String(error) });
   });
   if (syncTimer) {
     clearTimeout(syncTimer);
@@ -279,7 +280,7 @@ export function scheduleProfileStateSync(
         await waitForPendingDirtyWrites();
         await pushCurrentProfileState();
       } catch (error) {
-        console.error("Profile state sync failed:", error);
+        reportSyncError("Profile state sync failed", { error: String(error) });
       }
     })();
   }, nextDelay);

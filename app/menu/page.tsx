@@ -1,4 +1,5 @@
 "use client";
+import { reportSyncError } from "@/lib/error-monitor";
 
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
@@ -134,7 +135,7 @@ export default function MenuPage() {
       try {
         await syncEngine.pullChanges();
       } catch (error) {
-        console.error("Menu page sync pull failed:", error);
+        reportSyncError("Menu page sync pull failed", { error: String(error) });
       }
     };
 

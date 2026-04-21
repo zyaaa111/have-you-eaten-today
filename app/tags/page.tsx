@@ -1,4 +1,5 @@
 "use client";
+import { reportSyncError } from "@/lib/error-monitor";
 
 import { useState, useMemo } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
@@ -127,7 +128,7 @@ export default function TagsPage() {
       try {
         await syncEngine.pullChanges();
       } catch (error) {
-        console.error("Tags page sync pull failed:", error);
+        reportSyncError("Tags page sync pull failed", { error: String(error) });
       }
     };
 

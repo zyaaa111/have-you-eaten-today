@@ -18,7 +18,7 @@ import {
 import { buildLikeId } from "./like-id";
 
 export const DB_NAME = "HaveYouEatenTodayDB";
-export const DB_VERSION = 14;
+export const DB_VERSION = 15;
 
 export interface PendingDeletion {
   id?: number;
@@ -351,6 +351,25 @@ export class AppDatabase extends Dexie {
           }))
         );
       }
+    });
+
+    this.version(15).stores({
+      menuItems: "id, kind, name, shop, *tags, createdAt, updatedAt, [spaceId+syncStatus]",
+      tags: "id, name, type, createdAt, [spaceId+syncStatus]",
+      rollHistory: "id, rolledAt",
+      comboTemplates: "id, name, isBuiltin, createdAt, [spaceId+syncStatus]",
+      settings: "key",
+      pendingDeletions: "++id, tableName, recordId, spaceId, createdAt, [tableName+recordId]",
+      tagMappings: "++id, aliasId, canonicalId, spaceId",
+      avoidances: "++id, menuItemId, scope, profileId, spaceId, updatedAt, [scope+menuItemId], [profileId+menuItemId]",
+      wishes: "++id, menuItemId, scope, profileId, spaceId, updatedAt, [scope+menuItemId], [profileId+menuItemId]",
+      favorites: "++id, menuItemId, scope, profileId, spaceId, updatedAt, [scope+menuItemId], [profileId+menuItemId]",
+      personalWeights: "++id, menuItemId, scope, profileId, spaceId, updatedAt, [scope+menuItemId], [profileId+menuItemId]",
+      likes: "id, menuItemId, profileId, spaceId, [menuItemId+profileId], [spaceId+syncStatus]",
+      comments: "id, menuItemId, profileId, spaceId, createdAt, [spaceId+syncStatus]",
+      syncConflicts: "id, spaceId, tableName, recordId, seq, [spaceId+tableName], [spaceId+recordId]",
+      menuGroups: "id, scope, profileId, spaceId, updatedAt, sortOrder, [scope+sortOrder], [profileId+sortOrder]",
+      menuGroupItems: "++id, groupId, menuItemId, profileId, spaceId, updatedAt, [groupId+menuItemId], [profileId+groupId], sortOrder",
     });
   }
 }

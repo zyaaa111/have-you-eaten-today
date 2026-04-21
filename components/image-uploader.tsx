@@ -1,4 +1,5 @@
 "use client";
+import { reportApiError } from "@/lib/error-monitor";
 
 import { useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
@@ -65,7 +66,7 @@ export function ImageUploader({ value, onSelect, onClear, className }: ImageUplo
       const previewUrl = URL.createObjectURL(compressed);
       onSelect({ file: compressed, previewUrl });
     } catch (err) {
-      console.error("Image compress failed:", err);
+      reportApiError("Image compress failed", { error: String(err) });
     } finally {
       setLoading(false);
       if (inputRef.current) inputRef.current.value = "";

@@ -14,7 +14,7 @@ const PASSWORD_KEY_BYTES = 64;
 const PASSWORD_SCRYPT_COST = 16_384;
 const PASSWORD_SPLIT = "$";
 
-type RateLimitConfig = {
+export type RateLimitConfig = {
   maxAttempts: number;
   windowMs: number;
   blockMs: number;

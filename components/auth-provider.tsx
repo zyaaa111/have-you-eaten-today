@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { fetchAuthSession, getLocalSessionUser, logoutSession } from "@/lib/auth-client";
+import { fetchAuthSession, logoutSession } from "@/lib/auth-client";
 import type { AuthSession } from "@/lib/types";
 
 interface AuthContextValue extends AuthSession {
@@ -19,10 +19,7 @@ const EMPTY_SESSION: AuthSession = {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<AuthSession>(() => ({
-    user: getLocalSessionUser(),
-    profiles: [],
-  }));
+  const [session, setSession] = useState<AuthSession>(EMPTY_SESSION);
   const [loading, setLoading] = useState(true);
 
   const refreshSession = async () => {

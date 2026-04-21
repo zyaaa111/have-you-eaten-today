@@ -1,4 +1,5 @@
 "use client";
+import { reportApiError } from "@/lib/error-monitor";
 
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
@@ -144,7 +145,7 @@ export function MenuItemFormDialog({
         } catch (error) {
           if (!active) return;
           setRecentEditWarning("");
-          console.error("Menu item edit change-log fetch failed:", error);
+          reportApiError("Menu item edit change-log fetch failed", { error: String(error) });
         }
       } else {
         if (!active) return;

@@ -1,4 +1,5 @@
 "use client";
+import { reportSyncError } from "@/lib/error-monitor";
 
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
@@ -98,7 +99,7 @@ export default function TemplatesPage() {
       try {
         await syncEngine.pullChanges();
       } catch (error) {
-        console.error("Templates page sync pull failed:", error);
+        reportSyncError("Templates page sync pull failed", { error: String(error) });
       }
     };
 

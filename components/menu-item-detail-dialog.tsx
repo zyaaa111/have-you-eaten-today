@@ -1,4 +1,5 @@
 "use client";
+import { reportApiError } from "@/lib/error-monitor";
 
 import { useMemo, useState, useEffect } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
@@ -111,7 +112,7 @@ export function MenuItemDetailDialog({
           if (!active) return;
           setLogs([]);
           setHistoryError("历史记录加载失败，请稍后再试。");
-          console.error("Menu item history load failed:", error);
+          reportApiError("Menu item history load failed", { error: String(error) });
         } finally {
           if (active) {
             setLoadingLogs(false);

@@ -1,4 +1,5 @@
 "use client";
+import { reportSyncError } from "@/lib/error-monitor";
 
 import { useEffect, useMemo, useState } from "react";
 import { syncEngine } from "@/lib/sync-engine";
@@ -65,7 +66,7 @@ export default function ChangeLogPage() {
       } catch (error) {
         if (!active) return;
         setError("变更记录加载失败，请稍后重试。");
-        console.error("Change log page load failed:", error);
+        reportSyncError("Change log page load failed", { error: String(error) });
       } finally {
         if (active) {
           setLoading(false);

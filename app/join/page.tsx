@@ -313,13 +313,15 @@ export default function JoinPage() {
   );
 }
 
+import { reportSyncError } from "@/lib/error-monitor";
+
 async function syncAttachedLocalData() {
   try {
     const result = await syncEngine.syncChanges();
     if (!result.success) {
-      console.warn("Initial space sync did not fully complete:", result.error);
+      reportSyncError("Initial space sync did not fully complete", { error: result.error });
     }
   } catch (error) {
-    console.warn("Initial space sync failed:", error);
+    reportSyncError("Initial space sync failed", { error: String(error) });
   }
 }

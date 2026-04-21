@@ -9,6 +9,7 @@ import { getLocalIdentity } from "@/lib/identity";
 import { MobileNav } from "./mobile-nav";
 import { DesktopNav } from "./desktop-nav";
 import { useAuth } from "@/components/auth-provider";
+import { reportSyncError } from "@/lib/error-monitor";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, profiles, loading } = useAuth();
@@ -19,7 +20,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     seedDatabase()
       .then(() => migrateLegacyPrivateState())
       .then(() => migrateLegacyClientImages())
-      .catch(console.error);
+      .catch((err) => reportSyncError("App layout migration failed", { error: String(err) }));
   }, [loading, user?.id, profileKey]);
 
   useEffect(() => {
@@ -37,9 +38,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         running = false;
       }
     };
-    void syncAccountState().catch(console.error);
+    void syncAccountState().catch((err) => reportSyncError("App layout sync failed", { error: String(err) }));
     const timer = setInterval(() => {
-      void syncAccountState().catch(console.error);
+      void syncAccountState().catch((err) => reportSyncError("App layout periodic sync failed", { error: String(err) }));
     }, 3_000);
     return () => clearInterval(timer);
   }, [user?.id, profileKey]);

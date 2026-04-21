@@ -2,7 +2,7 @@
 
 一个帮你解决"今天吃什么"烦恼的轻量级 Web 应用。支持菜单管理、随机抽选、场景清单、收藏与推荐、历史记录，以及共享空间的 SSE + 增量同步，可安装为 PWA 在手机上使用。
 
-![Version](https://img.shields.io/badge/version-2.0.2-blue)
+![Version](https://img.shields.io/badge/version-2.0.3-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)
@@ -128,6 +128,7 @@ npm run start
 
 - 同域部署时可以不配置 `NEXT_PUBLIC_API_BASE_URL`，前端默认会请求 `/api`
 - 如果需要请求独立 API 域名，可在构建前设置 `NEXT_PUBLIC_API_BASE_URL=https://example.com/api`
+- 前端错误监控默认上报到 `/api/client-errors`；如需独立收集端点，可设置 `NEXT_PUBLIC_ERROR_MONITOR_ENDPOINT=https://example.com/api/client-errors`
 - `NEXT_PUBLIC_*` 变量会在构建时注入浏览器代码，修改后必须重新执行 `npm run build`
 
 ---
@@ -175,6 +176,9 @@ npm run test
 # CI 模式运行
 npm run test:run
 
+# 覆盖率报告
+npm run test:coverage
+
 # Playwright 端到端
 npm run test:e2e
 ```
@@ -216,7 +220,7 @@ have-you-eaten-today/
 
 ## 📝 版本与更新日志
 
-当前版本：**v2.0.2**
+当前版本：**v2.0.3**
 
 完整更新日志请查看 [CHANGELOG.md](./CHANGELOG.md)。
 

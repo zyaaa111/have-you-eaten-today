@@ -1,14 +1,16 @@
 {
   "name": "have-you-eaten-today",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/clean-build-cache.cjs && next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -30,11 +32,12 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/nodemailer": "^6.4.17",
     "@types/node": "^22.9.0",
+    "@types/nodemailer": "^6.4.17",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.5",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.35",

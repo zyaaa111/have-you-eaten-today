@@ -6,6 +6,28 @@
 
 ---
 
+## [2.0.3] - 2026-04-22
+
+### 🛠️ 基础设施
+- 新增 GitHub Actions CI，覆盖 lint、类型检查、单元测试覆盖率、构建和 Playwright E2E。
+- 新增 Vitest 覆盖率报告与阈值检查，并提供稳定的 `npm run test:coverage` 命令。
+- 新增 Next.js ESLint 配置，避免 CI 中 `next lint` 进入交互式初始化。
+- 为 Dexie `pendingDeletions` 增加 `[tableName+recordId]` 复合索引，消除同步删除查询性能警告。
+
+### 🔎 可观测性
+- 新增轻量前端错误监控，自动捕获未处理异常、Promise 拒绝和同步/API 错误。
+- 新增 `/api/client-errors` 同域错误上报端点，默认写入脱敏后的服务端结构化日志。
+- 上报链路新增 URL 与上下文脱敏，避免密码重置 token、邮箱、密码和授权信息进入日志。
+
+### ✅ 验证
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test:coverage`
+- `npm run build`
+- `npm run test:e2e`
+
+---
+
 ## [2.0.2] - 2026-04-21
 
 ### 🐛 修复

@@ -6,6 +6,7 @@ import { buildApiUrl } from "./api-base";
 import { sanitizeMenuItemRecord, sanitizeMenuItemSnapshot } from "./menu-item-sanitize";
 import { buildLikeId, isDeterministicLikeId } from "./like-id";
 import { getLocalSessionUser } from "./auth-client";
+import { reportSyncError } from "./error-monitor";
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const url = buildApiUrl(path);
@@ -233,7 +234,7 @@ export class HttpSyncEngine implements SyncService {
           await db.pendingDeletions.where({ tableName: mapPathToTableName(path), recordId: id }).delete();
         }
       } catch (e) {
-        console.error("Delete sync failed:", e);
+        reportSyncError("Delete sync failed", { error: String(e), tableName: mapPathToTableName(path) });
       }
     }
 
@@ -268,7 +269,7 @@ export class HttpSyncEngine implements SyncService {
           await db.menuItems.update(item.id, { syncStatus: "synced" });
         }
       } catch (e) {
-        console.error("Menu items sync failed:", e);
+        reportSyncError("Menu items sync failed", { error: String(e) });
         conflicts.push(...pendingMenuItems.map((i) => `menu_item:${i.id}`));
       }
     }
@@ -298,7 +299,7 @@ export class HttpSyncEngine implements SyncService {
           await db.tags.update(item.id, { syncStatus: "synced" });
         }
       } catch (e) {
-        console.error("Tags sync failed:", e);
+        reportSyncError("Tags sync failed", { error: String(e) });
         conflicts.push(...pendingTags.map((i) => `tag:${i.id}`));
       }
     }
@@ -332,7 +333,7 @@ export class HttpSyncEngine implements SyncService {
           await db.comboTemplates.update(item.id, { syncStatus: "synced" });
         }
       } catch (e) {
-        console.error("Combo templates sync failed:", e);
+        reportSyncError("Combo templates sync failed", { error: String(e) });
         conflicts.push(...pendingTemplates.map((i) => `combo_template:${i.id}`));
       }
     }
@@ -362,7 +363,7 @@ export class HttpSyncEngine implements SyncService {
           await db.likes.update(item.id, { syncStatus: "synced" });
         }
       } catch (e) {
-        console.error("Likes sync failed:", e);
+        reportSyncError("Likes sync failed", { error: String(e) });
         conflicts.push(...pendingLikes.map((i) => `like:${i.id}`));
       }
     }
@@ -397,7 +398,7 @@ export class HttpSyncEngine implements SyncService {
           await db.comments.update(item.id, { syncStatus: "synced" });
         }
       } catch (e) {
-        console.error("Comments sync failed:", e);
+        reportSyncError("Comments sync failed", { error: String(e) });
         conflicts.push(...pendingComments.map((i) => `comment:${i.id}`));
       }
     }

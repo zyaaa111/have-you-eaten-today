@@ -3,6 +3,7 @@ import "./globals.css";
 import { AppLayout } from "@/components/layout/app-layout";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
+import { ErrorMonitorInit } from "@/components/error-monitor-init";
 
 export const metadata: Metadata = {
   title: "今天吃了吗 - 随机菜单",
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body className="antialiased">
         <ThemeProvider>
           <AuthProvider>
+            <ErrorMonitorInit />
             <AppLayout>{children}</AppLayout>
           </AuthProvider>
         </ThemeProvider>

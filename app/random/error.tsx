@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportError } from "@/lib/error-monitor";
 
 export default function RandomError({
   error,
@@ -10,7 +11,7 @@ export default function RandomError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Random page error:", error);
+    reportError({ type: "error", message: error.message, stack: error.stack, context: { digest: error.digest, page: "random" } });
   }, [error]);
 
   return (

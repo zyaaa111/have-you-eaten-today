@@ -121,7 +121,7 @@ Vitest 测试 stderr 中多次出现 Dexie 警告：
 
 **Action runtime**：
 - 使用 `actions/checkout@v5`、`actions/setup-node@v5`、`actions/upload-artifact@v5`
-- 设置 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`，显式启用 Node.js 24 action runtime，避免 Node.js 20 action runtime 弃用警告
+- 设置 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`，显式启用 Node.js 24 action runtime，降低 Node.js 20 runtime 弃用风险；GitHub 仍可能对尚未声明 Node.js 24 的官方 action 显示信息提示
 
 ### 2.2 Vitest 覆盖率报告与阈值检查
 

@@ -24,6 +24,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ImageUploader } from "@/components/image-uploader";
+import {
+  removeMenuItemImage,
+  uploadMenuItemImage,
+  uploadMenuItemImageFromDataUrl,
+} from "@/lib/menu-item-images";
+import { isDataUrlImage } from "@/lib/image-utils";
 
 interface MenuItemFormDialogProps {
   open: boolean;
@@ -70,6 +76,8 @@ export function MenuItemFormDialog({
   const [shop, setShop] = useState("");
   const [shopAddress, setShopAddress] = useState("");
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
+  const [pendingImageFile, setPendingImageFile] = useState<Blob | null>(null);
+  const [pendingImagePreviewUrl, setPendingImagePreviewUrl] = useState<string | undefined>(undefined);
   const [error, setError] = useState("");
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -88,6 +96,8 @@ export function MenuItemFormDialog({
       // Load draft if exists
       const draftRaw = typeof window !== "undefined" ? localStorage.getItem(draftKey) : null;
       const draft = parseMenuItemFormDraft(draftRaw);
+      setPendingImageFile(null);
+      setPendingImagePreviewUrl(undefined);
 
       if (initialData) {
         let personalWeight: number | undefined = 1;
@@ -164,6 +174,14 @@ export function MenuItemFormDialog({
       active = false;
     };
   }, [open, initialData, draftKey]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingImagePreviewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(pendingImagePreviewUrl);
+      }
+    };
+  }, [pendingImagePreviewUrl]);
 
   // Auto-save draft
   useEffect(() => {
@@ -275,6 +293,23 @@ export function MenuItemFormDialog({
     setDragOverIdx(null);
   };
 
+  const handleImageSelected = ({ file, previewUrl }: { file: Blob; previewUrl: string }) => {
+    if (pendingImagePreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(pendingImagePreviewUrl);
+    }
+    setPendingImageFile(file);
+    setPendingImagePreviewUrl(previewUrl);
+  };
+
+  const handleImageCleared = () => {
+    if (pendingImagePreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(pendingImagePreviewUrl);
+    }
+    setPendingImageFile(null);
+    setPendingImagePreviewUrl(undefined);
+    setImageUrl(undefined);
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       setError("请输入名称");
@@ -286,15 +321,28 @@ export function MenuItemFormDialog({
     }
 
     const now = Date.now();
-    const base = {
-      kind,
-      name: name.trim(),
-      tags: selectedTagIds,
-      updatedAt: now,
-      imageUrl,
+    const persistImage = async (menuItemId: string, originalImageUrl?: string) => {
+      if (pendingImageFile) {
+        return uploadMenuItemImage(menuItemId, pendingImageFile);
+      }
+      if (imageUrl && isDataUrlImage(imageUrl)) {
+        return uploadMenuItemImageFromDataUrl(menuItemId, imageUrl);
+      }
+      if (!imageUrl && originalImageUrl) {
+        await removeMenuItemImage(menuItemId);
+      }
+      return imageUrl;
     };
 
     if (isEdit && initialData) {
+      const savedImageUrl = await persistImage(initialData.id, initialData.imageUrl);
+      const base = {
+        kind,
+        name: name.trim(),
+        tags: selectedTagIds,
+        updatedAt: now,
+        imageUrl: savedImageUrl,
+      };
       const updatePayload: Partial<MenuItem> = { ...base };
       if (kind === "recipe") {
         updatePayload.ingredients = ingredients
@@ -320,9 +368,18 @@ export function MenuItemFormDialog({
       await updateMenuItem(initialData.id, updatePayload);
       await saveItemWeight(initialData.id, weight);
     } else {
+      const newItemId = uuidv4();
+      const savedImageUrl = await persistImage(newItemId);
+      const base = {
+        kind,
+        name: name.trim(),
+        tags: selectedTagIds,
+        updatedAt: now,
+        imageUrl: savedImageUrl,
+      };
       const newItem: Omit<MenuItem, "spaceId" | "profileId" | "syncStatus" | "version"> & { id: string } = {
         ...base,
-        id: uuidv4(),
+        id: newItemId,
         createdAt: now,
       };
       if (kind === "recipe") {
@@ -344,6 +401,12 @@ export function MenuItemFormDialog({
       await createMenuItem(newItem);
       await saveItemWeight(newItem.id, weight);
     }
+
+    if (pendingImagePreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(pendingImagePreviewUrl);
+    }
+    setPendingImageFile(null);
+    setPendingImagePreviewUrl(undefined);
 
     localStorage.removeItem(draftKey);
     onOpenChange(false);
@@ -515,7 +578,11 @@ export function MenuItemFormDialog({
           <div className="space-y-4 border-t pt-4">
             <div>
               <label className="block text-sm font-medium mb-2">菜谱图片</label>
-              <ImageUploader value={imageUrl} onChange={setImageUrl} />
+              <ImageUploader
+                value={pendingImagePreviewUrl ?? imageUrl}
+                onSelect={handleImageSelected}
+                onClear={handleImageCleared}
+              />
             </div>
 
             <div>

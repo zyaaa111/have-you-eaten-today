@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, UtensilsCrossed, Tag, Layers, History, Settings } from "lucide-react";
+import { Home, UtensilsCrossed, Tag, Layers, History, Settings, FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -10,6 +10,7 @@ const navItems = [
   { href: "/menu", label: "菜单", icon: UtensilsCrossed },
   { href: "/tags", label: "标签", icon: Tag },
   { href: "/templates", label: "模板", icon: Layers },
+  { href: "/groups", label: "清单", icon: FolderOpen },
   { href: "/history", label: "历史", icon: History },
   { href: "/settings", label: "设置", icon: Settings },
 ];

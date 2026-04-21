@@ -1,12 +1,14 @@
 import Dexie from "dexie";
 import { describe, it, expect, beforeEach } from "vitest";
-import { AppDatabase, db, resetDatabase } from "@/lib/db";
+import { AppDatabase, db, resetDatabase, resetLocalSessionData } from "@/lib/db";
 import { seedDatabase } from "@/lib/seed";
 import { MenuItem } from "@/lib/types";
+import { clearLocalIdentity, saveLocalIdentity } from "@/lib/identity";
 import { v4 as uuidv4 } from "uuid";
 
 describe("Database", () => {
   beforeEach(async () => {
+    clearLocalIdentity();
     await resetDatabase();
   });
 
@@ -31,6 +33,90 @@ describe("Database", () => {
 
     expect(menuItems.some((m) => m.name === "番茄炒蛋")).toBe(true);
     expect(templates.some((t) => t.isBuiltin)).toBe(true);
+  });
+
+  it("should not seed example data when a shared-space identity exists", async () => {
+    saveLocalIdentity({
+      profile: { id: "profile-1", spaceId: "space-1", nickname: "测试用户", joinedAt: Date.now() },
+      space: { id: "space-1", inviteCode: "ABC123", name: "共享空间", createdAt: Date.now(), updatedAt: Date.now() },
+    });
+
+    await seedDatabase();
+
+    expect(await db.tags.count()).toBe(0);
+    expect(await db.menuItems.count()).toBe(0);
+    expect(await db.comboTemplates.count()).toBe(0);
+  });
+
+  it("should reset local session data while preserving settings", async () => {
+    await db.settings.put({ key: "theme", value: "dark" });
+    await db.menuItems.add({
+      id: "menu-1",
+      kind: "recipe",
+      name: "测试菜",
+      tags: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    await db.tags.add({
+      id: "tag-1",
+      name: "测试标签",
+      type: "custom",
+      createdAt: Date.now(),
+    });
+    await db.rollHistory.add({
+      id: "history-1",
+      rolledAt: Date.now(),
+      items: [{ menuItemId: "menu-1", name: "测试菜", kind: "recipe" }],
+      ruleSnapshot: "single",
+    });
+    await db.comboTemplates.add({
+      id: "template-1",
+      name: "模板",
+      rules: [],
+      isBuiltin: false,
+      createdAt: Date.now(),
+    });
+    await db.pendingDeletions.add({
+      tableName: "menu_items",
+      recordId: "menu-2",
+      spaceId: "space-1",
+      createdAt: Date.now(),
+    });
+    await db.tagMappings.add({ spaceId: "space-1", aliasId: "tag-a", canonicalId: "tag-1" });
+    await db.avoidances.add({ menuItemId: "menu-1" });
+    await db.personalWeights.add({ menuItemId: "menu-1", weight: 3 });
+    await db.likes.add({
+      id: "like-1",
+      menuItemId: "menu-1",
+      profileId: "profile-1",
+      spaceId: "space-1",
+      createdAt: Date.now(),
+    });
+    await db.comments.add({
+      id: "comment-1",
+      menuItemId: "menu-1",
+      profileId: "profile-1",
+      spaceId: "space-1",
+      nickname: "测试用户",
+      content: "好吃",
+      isAnonymous: false,
+      createdAt: Date.now(),
+    });
+
+    await resetLocalSessionData();
+
+    expect(await db.settings.get("theme")).toMatchObject({ value: "dark" });
+    expect(await db.menuItems.count()).toBe(0);
+    expect(await db.tags.count()).toBe(0);
+    expect(await db.rollHistory.count()).toBe(0);
+    expect(await db.comboTemplates.count()).toBe(0);
+    expect(await db.pendingDeletions.count()).toBe(0);
+    expect(await db.tagMappings.count()).toBe(0);
+    expect(await db.avoidances.count()).toBe(0);
+    expect(await db.personalWeights.count()).toBe(0);
+    expect(await db.likes.count()).toBe(0);
+    expect(await db.comments.count()).toBe(0);
   });
 
   it("should use deterministic ids for seed data", async () => {

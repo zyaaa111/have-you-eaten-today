@@ -15,6 +15,7 @@ import { getLikesCountByMenuItems } from "@/lib/likes";
 import { getCommentsCountByMenuItems } from "@/lib/comments";
 import { Plus, Search, ChefHat, Bike, Tag as TagIcon, Heart, Trash2, X, Ban, ThumbsUp, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth-provider";
 
 const typeLabels: Record<TagType, string> = {
   cuisine: "菜系",
@@ -29,6 +30,7 @@ const typeColors: Record<TagType, string> = {
 };
 
 export default function MenuPage() {
+  const { user } = useAuth();
   const menuItems = useLiveQuery(() => db.menuItems.toArray(), []) || [];
   const allTags = useLiveQuery(() => db.tags.toArray(), []) || [];
 
@@ -52,7 +54,7 @@ export default function MenuPage() {
   useEffect(() => {
     getWishIds().then(setWishIds);
     getAvoidedIds().then((ids) => setAvoidIds(Array.from(ids)));
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     async function loadWeights() {
@@ -136,9 +138,7 @@ export default function MenuPage() {
       }
     };
 
-    const sub = syncEngine.subscribeToChanges(() => {
-      void pullChangesSafely();
-    });
+    const sub = syncEngine.subscribeToChanges(pullChangesSafely);
     void pullChangesSafely();
     return () => sub.unsubscribe();
   }, []);

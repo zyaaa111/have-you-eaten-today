@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChefHat, Bike, Dices } from "lucide-react";
 import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { MenuItem } from "@/lib/types";
 import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
+import { getLocalIdentity } from "@/lib/identity";
+import { getRecommendations } from "@/lib/recommendations";
+import { getFavoriteIds } from "@/lib/favorites";
+import { useAuth } from "@/components/auth-provider";
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -21,15 +25,25 @@ function relativeTime(ts: number): string {
 }
 
 export default function Home() {
+  const { user } = useAuth();
+  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [identity, setIdentity] = useState<ReturnType<typeof getLocalIdentity>>(null);
+
+  const menuItems = useLiveQuery(() => db.menuItems.toArray(), []) || [];
   const latestHistory = useLiveQuery(
     () => db.rollHistory.orderBy("rolledAt").reverse().first(),
     []
   );
+  const favoriteIds = useLiveQuery(() => getFavoriteIds(), [identity?.profile.id]) ?? [];
+  const recommendations = useLiveQuery(() => getRecommendations({ limit: 4 }), [latestHistory?.rolledAt]) ?? [];
 
   const firstItem = latestHistory?.items[0];
+  const favoriteItems = menuItems.filter((item) => favoriteIds.includes(item.id)).slice(0, 4);
 
-  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  useEffect(() => {
+    setIdentity(getLocalIdentity());
+  }, [user?.id]);
 
   const handleItemClick = async (menuItemId: string, name: string) => {
     const item = await db.menuItems.get(menuItemId);
@@ -136,9 +150,76 @@ export default function Home() {
         </section>
       )}
 
+      {recommendations.length > 0 && (
+        <section className="max-w-4xl mx-auto space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">今日推荐</h3>
+            <Link href="/random" className="text-sm font-medium text-primary hover:underline">
+              去随机页
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {recommendations.map(({ item, reasons, score }) => (
+              <button
+                key={item.id}
+                onClick={() => handleItemClick(item.id, item.name)}
+                className="rounded-xl border bg-card p-4 text-left shadow-sm hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">{item.name}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {item.kind === "recipe" ? "菜谱" : item.shop || "外卖"}
+                    </div>
+                  </div>
+                  <div className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                    {score.toFixed(1)}
+                  </div>
+                </div>
+                {reasons.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {reasons.slice(0, 3).map((reason) => (
+                      <span key={reason} className="rounded-full border bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground">
+                        {reason}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {favoriteItems.length > 0 && (
+        <section className="max-w-4xl mx-auto space-y-3">
+          <h3 className="text-lg font-semibold">我的收藏</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {favoriteItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleItemClick(item.id, item.name)}
+                className="rounded-xl border bg-card p-4 text-left shadow-sm hover:bg-muted/30 transition"
+              >
+                <div className="font-semibold">{item.name}</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {item.kind === "recipe" ? "菜谱" : item.shop || "外卖"}
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="max-w-2xl mx-auto">
         <div className="rounded-xl border bg-muted/40 p-4 text-sm text-muted-foreground">
-          <p>💡 提示：你的所有数据都保存在浏览器本地，请定期到「设置」中导出备份。</p>
+          {identity && user ? (
+            <p>💡 提示：你正在使用共享空间数据；菜单与互动会同步到本地后端服务，其他成员可以看到你的共享操作。</p>
+          ) : identity ? (
+            <p>💡 提示：当前设备仍保留共享空间指针，但你已经退出账号登录；重新登录后才能继续访问和同步共享空间数据。</p>
+          ) : (
+            <p>💡 提示：你当前使用的是本地私有数据模式；菜单和偏好保存在本机，请定期到「设置」中导出备份。</p>
+          )}
         </div>
       </section>
 

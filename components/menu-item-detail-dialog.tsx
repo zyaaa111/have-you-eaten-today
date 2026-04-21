@@ -5,7 +5,7 @@ import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { MenuItem, TagType, ChangeLog } from "@/lib/types";
 import { Modal } from "@/components/ui/modal";
-import { ChefHat, Bike, Pencil, Trash2, Heart, History, RotateCcw, X, Ban, ThumbsUp } from "lucide-react";
+import { ChefHat, Bike, Pencil, Trash2, Heart, History, RotateCcw, X, Ban, ThumbsUp, Bookmark } from "lucide-react";
 import { getWishIds, toggleWishId } from "@/lib/wishlist";
 import { isAvoided, toggleAvoidance } from "@/lib/avoidances";
 import { syncEngine } from "@/lib/sync-engine";
@@ -14,6 +14,7 @@ import { getWeight } from "@/lib/weights";
 import { buildMenuItemRestorePayload } from "@/lib/menu-item-sanitize";
 import { toggleLike, isLikedByCurrentUser } from "@/lib/likes";
 import { CommentSection } from "@/components/comment-section";
+import { isFavorite, toggleFavoriteId } from "@/lib/favorites";
 
 interface MenuItemDetailDialogProps {
   item: MenuItem | null;
@@ -51,6 +52,8 @@ export function MenuItemDetailDialog({
   const [historyError, setHistoryError] = useState("");
   const [personalWeight, setPersonalWeight] = useState<number | undefined>(undefined);
   const [likeLoading, setLikeLoading] = useState(false);
+  const [creatorName, setCreatorName] = useState<string | null>(null);
+  const [favorite, setFavorite] = useState(false);
 
   const likesCount = useLiveQuery(async () => {
     if (!item) return 0;
@@ -67,9 +70,28 @@ export function MenuItemDetailDialog({
       getWishIds().then((ids) => setIsWished(ids.includes(item.id)));
       isAvoided(item.id).then(setAvoided);
       getWeight(item.id).then(setPersonalWeight);
+      isFavorite(item.id).then(setFavorite);
       setShowHistory(false);
       setLogs([]);
       setHistoryError("");
+      setCreatorName(null);
+
+      // Fetch creator info from earliest change log
+      let creatorActive = true;
+      void (async () => {
+        try {
+          const changeLogs = await syncEngine.fetchChangeLogsForRecord("menu_items", item.id);
+          if (!creatorActive) return;
+          const createLog = changeLogs.find((l) => l.operation === "create");
+          if (createLog?.actorNickname) {
+            setCreatorName(createLog.actorNickname);
+          }
+        } catch {
+          // Non-critical, ignore
+        }
+      })();
+
+      return () => { creatorActive = false; };
     }
   }, [open, item]);
 
@@ -122,6 +144,12 @@ export function MenuItemDetailDialog({
     } finally {
       setLikeLoading(false);
     }
+  };
+
+  const handleToggleFavorite = async () => {
+    if (!item) return;
+    const next = await toggleFavoriteId(item.id);
+    setFavorite(next);
   };
 
   const handleRestore = async (snapshot: Record<string, unknown>) => {
@@ -185,6 +213,17 @@ export function MenuItemDetailDialog({
                 {likesCount > 0 ? likesCount : "赞"}
               </button>
               <button
+                onClick={handleToggleFavorite}
+                className={`flex-1 min-w-[72px] justify-center rounded-md border px-2 py-2 text-xs font-medium transition sm:flex-initial sm:px-4 sm:py-2 sm:text-sm ${
+                  favorite
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    : "bg-background hover:bg-muted"
+                }`}
+              >
+                <Bookmark className={`w-4 h-4 inline-block mr-1 align-text-bottom ${favorite ? "fill-current" : ""}`} />
+                收藏
+              </button>
+              <button
                 onClick={async () => {
                   if (!item) return;
                   const next = await toggleAvoidance(item.id);
@@ -219,7 +258,7 @@ export function MenuItemDetailDialog({
             onClick={() => onOpenChange(false)}
             className="flex-1 min-w-[72px] justify-center rounded-md bg-primary px-2 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 sm:flex-initial sm:px-4 sm:py-2 sm:text-sm"
           >
-            {showHistory ? "关闭" : "关闭"}
+            关闭
           </button>
         </>
       }
@@ -255,6 +294,9 @@ export function MenuItemDetailDialog({
                 )}
               </span>
               <span className="text-xs text-muted-foreground">权重 {personalWeight ?? "—"}</span>
+              {creatorName && (
+                <span className="text-xs text-muted-foreground">由 {creatorName} 创建</span>
+              )}
             </div>
 
             {itemTags.length > 0 && (

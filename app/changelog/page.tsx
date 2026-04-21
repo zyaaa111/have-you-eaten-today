@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { syncEngine } from "@/lib/sync-engine";
-import type { ChangeLog } from "@/lib/types";
+import type { ChangeLog, Profile } from "@/lib/types";
 import { History, ArrowLeft, RotateCcw, Trash2, Plus, FileEdit } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -46,6 +46,9 @@ export default function ChangeLogPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | ChangeLog["operation"]> ("all");
+  const [tableFilter, setTableFilter] = useState<"all" | ChangeLog["tableName"]>("all");
+  const [memberFilter, setMemberFilter] = useState<"all" | string>("all");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -55,6 +58,9 @@ export default function ChangeLogPage() {
         const data = await syncEngine.fetchChangeLogs(100);
         if (!active) return;
         setLogs(data);
+        const members = await syncEngine.fetchProfiles();
+        if (!active) return;
+        setProfiles(members);
         setError("");
       } catch (error) {
         if (!active) return;
@@ -74,7 +80,22 @@ export default function ChangeLogPage() {
     };
   }, []);
 
-  const filteredLogs = filter === "all" ? logs : logs.filter((l) => l.operation === filter);
+  const memberOptions = useMemo(() => {
+    const knownProfiles = new Map(profiles.map((profile) => [profile.id, profile.nickname]));
+    for (const log of logs) {
+      if (log.profileId && log.actorNickname && !knownProfiles.has(log.profileId)) {
+        knownProfiles.set(log.profileId, log.actorNickname);
+      }
+    }
+    return Array.from(knownProfiles.entries()).map(([id, nickname]) => ({ id, nickname }));
+  }, [logs, profiles]);
+
+  const filteredLogs = logs.filter((log) => {
+    if (filter !== "all" && log.operation !== filter) return false;
+    if (tableFilter !== "all" && log.tableName !== tableFilter) return false;
+    if (memberFilter !== "all" && log.profileId !== memberFilter) return false;
+    return true;
+  });
 
   return (
     <div className="space-y-5">
@@ -105,6 +126,33 @@ export default function ChangeLogPage() {
             {f === "all" ? "全部" : f === "create" ? "新增" : f === "update" ? "修改" : "删除"}
           </button>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <select
+          value={tableFilter}
+          onChange={(e) => setTableFilter(e.target.value as "all" | ChangeLog["tableName"])}
+          className="rounded-md border bg-background px-3 py-2 text-sm"
+        >
+          <option value="all">全部表类型</option>
+          <option value="menu_items">菜单</option>
+          <option value="tags">标签</option>
+          <option value="combo_templates">模板</option>
+          <option value="likes">点赞</option>
+          <option value="comments">评论</option>
+        </select>
+        <select
+          value={memberFilter}
+          onChange={(e) => setMemberFilter(e.target.value)}
+          className="rounded-md border bg-background px-3 py-2 text-sm"
+        >
+          <option value="all">全部成员</option>
+          {memberOptions.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.nickname}
+            </option>
+          ))}
+        </select>
       </div>
 
       {loading ? (

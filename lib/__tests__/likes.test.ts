@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { resetDatabase, db } from "../db";
-import { saveLocalIdentity } from "../supabase";
+import { saveLocalIdentity } from "../identity";
 import type { Space, Profile } from "../types";
 import { toggleLike, isLikedByCurrentUser, getLikesCountByMenuItems } from "../likes";
 import { buildLikeId } from "../like-id";

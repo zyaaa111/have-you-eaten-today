@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db-server";
+import { requireSpaceMembership } from "@/lib/server-auth";
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
+  const auth = requireSpaceMembership(request, id);
+  if ("response" in auth) return auth.response;
   const space = db.prepare("SELECT * FROM spaces WHERE id = ?").get(id) as
     | { id: string; invite_code: string; name: string; created_at: number }
     | undefined;

@@ -5,14 +5,15 @@ import { ImagePlus, X } from "lucide-react";
 
 interface ImageUploaderProps {
   value?: string;
-  onChange: (value: string | undefined) => void;
+  onSelect: (value: { file: Blob; previewUrl: string }) => void;
+  onClear: () => void;
   className?: string;
 }
 
 const MAX_WIDTH = 800;
 const QUALITY = 0.8;
 
-function compressImage(file: File): Promise<string> {
+function compressImage(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const reader = new FileReader();
@@ -39,13 +40,19 @@ function compressImage(file: File): Promise<string> {
         return;
       }
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", QUALITY));
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error("图片压缩失败"));
+          return;
+        }
+        resolve(blob);
+      }, "image/jpeg", QUALITY);
     };
     img.onerror = reject;
   });
 }
 
-export function ImageUploader({ value, onChange, className }: ImageUploaderProps) {
+export function ImageUploader({ value, onSelect, onClear, className }: ImageUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
@@ -54,8 +61,9 @@ export function ImageUploader({ value, onChange, className }: ImageUploaderProps
     if (!file) return;
     setLoading(true);
     try {
-      const dataUrl = await compressImage(file);
-      onChange(dataUrl);
+      const compressed = await compressImage(file);
+      const previewUrl = URL.createObjectURL(compressed);
+      onSelect({ file: compressed, previewUrl });
     } catch (err) {
       console.error("Image compress failed:", err);
     } finally {
@@ -75,7 +83,7 @@ export function ImageUploader({ value, onChange, className }: ImageUploaderProps
           />
           <button
             type="button"
-            onClick={() => onChange(undefined)}
+            onClick={onClear}
             className="absolute top-2 right-2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70"
           >
             <X className="w-4 h-4" />

@@ -2,9 +2,16 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
-import { getCommentsByMenuItem, addComment, deleteComment } from "@/lib/comments";
+import {
+  getCommentUndoWindowMs,
+  getCommentsByMenuItem,
+  addComment,
+  deleteComment,
+  restoreDeletedComment,
+  updateComment,
+} from "@/lib/comments";
 import { getCurrentProfileId, hasSpace } from "@/lib/space-ops";
-import { Trash2, MessageCircle, Send } from "lucide-react";
+import { Trash2, MessageCircle, Send, Pencil } from "lucide-react";
 
 interface CommentSectionProps {
   menuItemId: string;
@@ -15,6 +22,9 @@ export function CommentSection({ menuItemId }: CommentSectionProps) {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [currentProfileId, setCurrentProfileId] = useState<string | undefined>();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [undoCommentId, setUndoCommentId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,6 +44,14 @@ export function CommentSection({ menuItemId }: CommentSectionProps) {
     }
   }, [comments.length]);
 
+  useEffect(() => {
+    if (!undoCommentId) return;
+    const timer = window.setTimeout(() => {
+      setUndoCommentId(null);
+    }, getCommentUndoWindowMs());
+    return () => window.clearTimeout(timer);
+  }, [undoCommentId]);
+
   const handleSubmit = async () => {
     const trimmed = content.trim();
     if (!trimmed || submitting) return;
@@ -51,10 +69,47 @@ export function CommentSection({ menuItemId }: CommentSectionProps) {
   const handleDelete = async (commentId: string) => {
     if (!confirm("确定删除这条评论？")) return;
     try {
-      await deleteComment(commentId);
+      const deleted = await deleteComment(commentId);
+      setUndoCommentId(deleted?.id ?? null);
     } catch (e) {
       alert(e instanceof Error ? e.message : "删除失败");
     }
+  };
+
+  const handleUndoDelete = async () => {
+    if (!undoCommentId) return;
+    try {
+      const restored = await restoreDeletedComment(undoCommentId);
+      if (!restored) {
+        alert("撤回窗口已过期");
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "撤回失败");
+    } finally {
+      setUndoCommentId(null);
+    }
+  };
+
+  const handleStartEdit = (commentId: string, currentContent: string) => {
+    setEditingId(commentId);
+    setEditContent(currentContent);
+  };
+
+  const handleSaveEdit = async (commentId: string) => {
+    const trimmed = editContent.trim();
+    if (!trimmed) return;
+    try {
+      await updateComment(commentId, trimmed);
+      setEditingId(null);
+      setEditContent("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "编辑失败");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditContent("");
   };
 
   const formatTime = (ts: number) => {
@@ -90,16 +145,63 @@ export function CommentSection({ menuItemId }: CommentSectionProps) {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">{formatTime(c.createdAt)}</span>
                 {c.profileId === currentProfileId && (
-                  <button
-                    onClick={() => handleDelete(c.id)}
-                    className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleStartEdit(c.id, c.content)}
+                      aria-label="编辑评论"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(c.id)}
+                      aria-label="删除评论"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
                 )}
               </div>
             </div>
-            <p className="text-sm mt-1 leading-relaxed">{c.content}</p>
+            {editingId === c.id ? (
+              <div className="mt-1 space-y-2">
+                <input
+                  type="text"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  maxLength={2000}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSaveEdit(c.id);
+                    }
+                    if (e.key === "Escape") {
+                      handleCancelEdit();
+                    }
+                  }}
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleSaveEdit(c.id)}
+                    disabled={!editContent.trim()}
+                    className="rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-50"
+                  >
+                    保存
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm mt-1 leading-relaxed">{c.content}</p>
+            )}
           </div>
         ))}
       </div>
@@ -147,6 +249,17 @@ export function CommentSection({ menuItemId }: CommentSectionProps) {
             </button>
             <span className="text-xs text-muted-foreground">匿名评论</span>
           </div>
+          {undoCommentId && (
+            <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <span>评论已删除，可在 30 秒内撤回。</span>
+              <button
+                onClick={handleUndoDelete}
+                className="rounded-md bg-background px-2 py-1 font-medium hover:bg-muted"
+              >
+                撤回
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

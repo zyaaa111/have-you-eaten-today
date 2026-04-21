@@ -1,5 +1,4 @@
 import type { Space, Profile } from "./types";
-import { buildApiUrl } from "./api-base";
 
 const LOCAL_PROFILE_KEY = "hyet_profile_v1";
 const LOCAL_SPACE_KEY = "hyet_space_v1";
@@ -33,25 +32,6 @@ export function getLocalIdentity(): LocalIdentity | null {
     };
   } catch {
     return null;
-  }
-}
-
-export async function ensureAnonymousUser(): Promise<{ userId: string; error?: Error }> {
-  const local = getLocalIdentity();
-  if (local) return { userId: local.profile.id };
-
-  try {
-    const res = await fetch(buildApiUrl("/auth/anonymous"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as { userId: string };
-    return { userId: data.userId };
-  } catch (e) {
-    // fallback local id
-    const fallbackId = `local_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    return { userId: fallbackId, error: e instanceof Error ? e : new Error(String(e)) };
   }
 }
 

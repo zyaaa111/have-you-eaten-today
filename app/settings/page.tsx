@@ -1,18 +1,26 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { exportData, downloadExport, importData } from "@/lib/io";
-import { resetDatabase } from "@/lib/db";
+import { downloadBackupArchive, exportBackupArchive, importData } from "@/lib/io";
+import { resetDatabase, resetLocalSessionData } from "@/lib/db";
+import { useLiveQuery } from "@/lib/use-live-query";
 import { seedDatabase } from "@/lib/seed";
 import { getDefaultDedupDays, saveSetting, getSetting, getDedupEnabled, getTheme } from "@/lib/settings";
 import { applyThemeToDOM } from "@/components/theme-provider";
-import type { AppSettings } from "@/lib/types";
-import { getLocalIdentity, clearLocalIdentity } from "@/lib/supabase";
+import type { AppSettings, SyncConflict } from "@/lib/types";
+import { getLocalIdentity, clearLocalIdentity } from "@/lib/identity";
 import { syncEngine } from "@/lib/sync-engine";
+import { detachSpaceData } from "@/lib/space-ops";
+import { clearCurrentProfileState } from "@/lib/profile-state";
 import { useRouter } from "next/navigation";
+import type { Profile } from "@/lib/types";
+import { db } from "@/lib/db";
+import { useAuth } from "@/components/auth-provider";
+import { bindLocalProfile, changePassword } from "@/lib/auth-client";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { user, loading: authLoading, logout, refreshSession, passwordResetConfigured } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string>("");
   const [dedupDays, setDedupDays] = useState<number>(7);
@@ -22,7 +30,23 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState<AppSettings["theme"]>("default");
   const [identity, setIdentity] = useState<ReturnType<typeof getLocalIdentity>>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<Awaited<ReturnType<typeof syncEngine.getSyncStatus>>>({
+    pendingCount: 0,
+    conflictCount: 0,
+    cursor: 0,
+    connectionStatus: "offline",
+  });
   const [syncing, setSyncing] = useState(false);
+  const [members, setMembers] = useState<Profile[]>([]);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [bindingLegacyProfile, setBindingLegacyProfile] = useState(false);
+  const conflicts = useLiveQuery(
+    () => (identity ? db.syncConflicts.where("spaceId").equals(identity.space.id).toArray() : Promise.resolve([] as SyncConflict[])),
+    [identity?.space.id]
+  ) ?? [];
 
   useEffect(() => {
     Promise.all([
@@ -37,14 +61,24 @@ export default function SettingsPage() {
       setTheme(t);
       setLoadingSettings(false);
     });
-    setIdentity(getLocalIdentity());
-    syncEngine.getSyncStatus().then((s) => setPendingCount(s.pendingCount));
+    const localIdentity = getLocalIdentity();
+    setIdentity(localIdentity);
+    syncEngine.getSyncStatus().then((s) => {
+      setSyncStatus(s);
+      setPendingCount(s.pendingCount);
+    });
+    if (localIdentity) {
+      syncEngine.fetchProfiles(localIdentity.space.id).then(setMembers).catch(() => {});
+    }
 
     const timer = setInterval(() => {
-      syncEngine.getSyncStatus().then((s) => setPendingCount(s.pendingCount));
+      syncEngine.getSyncStatus().then((s) => {
+        setSyncStatus(s);
+        setPendingCount(s.pendingCount);
+      });
     }, 1500);
     return () => clearInterval(timer);
-  }, []);
+  }, [user?.id]);
 
   const handleDedupDaysChange = async (value: number) => {
     const num = Math.max(1, Math.min(30, Math.floor(value)));
@@ -70,8 +104,8 @@ export default function SettingsPage() {
   };
 
   const handleExport = async () => {
-    const data = await exportData();
-    downloadExport(data);
+    const archive = await exportBackupArchive();
+    downloadBackupArchive(archive);
     const now = Date.now();
     await saveSetting("lastBackupAt", now);
     setLastBackupAt(now);
@@ -82,6 +116,14 @@ export default function SettingsPage() {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (identity) {
+      setMessage("当前仍在共享空间中，个人备份导入仅支持本地模式，请先退出空间后再导入");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
     const result = await importData(file);
     if (result.success) {
       setMessage("导入成功，页面即将刷新…");
@@ -95,11 +137,34 @@ export default function SettingsPage() {
   };
 
   const handleReset = async () => {
-    if (!confirm("确定要清空所有数据并恢复初始状态吗？此操作不可恢复。")) return;
-    await resetDatabase();
-    await seedDatabase();
-    setMessage("数据已重置");
-    setTimeout(() => window.location.reload(), 500);
+    const confirmed = confirm(
+      identity
+        ? "确定要清空当前设备上的本地数据并重新同步共享空间吗？这不会退出空间；个人历史、忌口和个人权重会被清空，界面设置会保留。"
+        : "确定要清空所有本地数据并恢复初始示例数据吗？此操作不可恢复。"
+    );
+    if (!confirmed) return;
+
+    try {
+      if (identity) {
+        await resetLocalSessionData();
+        await clearCurrentProfileState();
+        await syncEngine.pullChanges();
+        const status = await syncEngine.getSyncStatus();
+        setSyncStatus(status);
+        setPendingCount(status.pendingCount);
+        setMessage("当前设备的本地数据和当前账号在此空间下的个人偏好已清空，并已重新同步共享空间；界面设置已保留");
+        setTimeout(() => setMessage(""), 3000);
+        return;
+      }
+
+      await resetDatabase();
+      await seedDatabase();
+      setMessage("数据已重置，示例数据已恢复");
+      setTimeout(() => window.location.reload(), 500);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "重置数据失败");
+      setTimeout(() => setMessage(""), 3000);
+    }
   };
 
   const handleSyncNow = async () => {
@@ -112,22 +177,218 @@ export default function SettingsPage() {
       setMessage(`同步遇到问题：${pushResult.error || "未知错误"}`);
     }
     const status = await syncEngine.getSyncStatus();
+    setSyncStatus(status);
     setPendingCount(status.pendingCount);
     setSyncing(false);
     setTimeout(() => setMessage(""), 3000);
   };
 
-  const handleLeaveSpace = () => {
-    if (!confirm("确定要退出当前空间吗？本地数据不会丢失。")) return;
-    clearLocalIdentity();
-    setIdentity(null);
-    setMessage("已退出空间");
-    setTimeout(() => setMessage(""), 2000);
+  const handleResolveConflict = async (conflictId: string, action: "accept-remote" | "keep-local") => {
+    await syncEngine.resolveConflict(conflictId, action);
+    const status = await syncEngine.getSyncStatus();
+    setSyncStatus(status);
+    setPendingCount(status.pendingCount);
+    setMessage(action === "accept-remote" ? "已接受远端版本" : "已保留本地版本并重新加入同步队列");
+    setTimeout(() => setMessage(""), 3000);
+  };
+
+  const connectionLabel =
+    syncStatus.connectionStatus === "streaming"
+      ? "SSE 实时推送"
+      : syncStatus.connectionStatus === "polling"
+        ? "轮询回退"
+        : "离线";
+
+  const handleLeaveSpace = async () => {
+    if (!identity) return;
+    const confirmed = confirm(
+      "确定要退出当前空间吗？菜单、标签和模板会保留为本地数据；共享点赞和评论会被移除，当前空间下跟账号绑定的私有偏好不会转成本地模式。"
+    );
+    if (!confirmed) return;
+
+    try {
+      await detachSpaceData(identity.space.id);
+      clearLocalIdentity();
+      setIdentity(null);
+      setMembers([]);
+      setPendingCount(0);
+      setMessage("已退出空间，核心内容已转为本地数据；共享点赞和评论已移除，账号绑定的私有偏好仍保留在对应空间身份下");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "退出空间失败");
+    }
+    setTimeout(() => setMessage(""), 3000);
+  };
+
+  const canBindLocalProfile = !!user && !!identity && !identity.profile.userId;
+
+  const handleBindLocalProfile = async () => {
+    if (!identity || !user) return;
+    setBindingLegacyProfile(true);
+    try {
+      await bindLocalProfile(identity.profile.id, identity.space.id);
+      await refreshSession();
+      setIdentity(getLocalIdentity());
+      setMessage("当前设备保存的旧空间身份已绑定到这个账号");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "绑定旧身份失败");
+    } finally {
+      setBindingLegacyProfile(false);
+      setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newPassword || !confirmPassword) {
+      setMessage("请输入并确认新密码");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage("两次输入的新密码不一致");
+      return;
+    }
+
+    setPasswordBusy(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      await refreshSession();
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setMessage(user?.hasPassword ? "密码已修改" : "密码已设置");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "修改密码失败");
+    } finally {
+      setPasswordBusy(false);
+      setTimeout(() => setMessage(""), 3000);
+    }
   };
 
   return (
     <div className="space-y-6 max-w-xl">
       <h2 className="text-xl font-bold">设置</h2>
+
+      <section className="rounded-xl border bg-card p-5 space-y-4">
+        <h3 className="font-semibold">账号</h3>
+        {authLoading ? (
+          <p className="text-sm text-muted-foreground">正在恢复登录状态…</p>
+        ) : user ? (
+          <div className="space-y-3">
+            <div className="text-sm">
+              <div className="text-muted-foreground">当前账号</div>
+              <div className="font-medium">{user.email}</div>
+            </div>
+            <div className="rounded-md bg-emerald-50 p-3 text-xs text-emerald-700">
+              账号用于跨设备识别同一个人；空间内仍然显示你的空间昵称。收藏、忌口、想吃、个人权重和场景清单会跟随账号绑定到当前空间身份。
+            </div>
+            {canBindLocalProfile && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 space-y-2">
+                <div>当前设备保存了一个还没绑定账号的旧空间身份。</div>
+                <button
+                  onClick={handleBindLocalProfile}
+                  disabled={bindingLegacyProfile}
+                  className="inline-flex items-center justify-center rounded-md bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                >
+                  {bindingLegacyProfile ? "绑定中…" : "绑定当前设备旧身份"}
+                </button>
+              </div>
+            )}
+            <form onSubmit={handleChangePassword} className="space-y-3 rounded-md border p-3">
+              <div className="text-sm font-medium">{user.hasPassword ? "修改密码" : "设置登录密码"}</div>
+              {!user.hasPassword && !passwordResetConfigured && (
+                <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-700">
+                  当前没有配置 QQ SMTP；如果未来忘记密码，将无法通过邮件找回。
+                </div>
+              )}
+              {user.hasPassword && (
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-muted-foreground">当前密码</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-muted-foreground">新密码</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="至少 8 位，包含字母和数字"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-muted-foreground">确认新密码</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  disabled={passwordBusy}
+                  className="inline-flex items-center justify-center rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+                >
+                  {passwordBusy ? "提交中…" : user.hasPassword ? "修改密码" : "设置密码"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push("/login")}
+                  className="inline-flex items-center justify-center rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+                >
+                  忘记密码
+                </button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                忘记密码和首次设密通过 QQ SMTP 邮件完成；真实 SMTP 凭据只放在 `.env.local` 或部署环境变量中，不会进入 Git。
+              </div>
+            </form>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => router.push("/login?redirect=/settings")}
+                className="inline-flex items-center justify-center rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+              >
+                切换账号
+              </button>
+              <button
+                onClick={async () => {
+                  await logout();
+                  await refreshSession();
+                  setMessage("已退出账号登录；当前设备仍会保留空间指针，但共享同步会立即停止，重新登录后才能继续访问共享空间");
+                  setTimeout(() => setMessage(""), 3000);
+                }}
+                className="inline-flex items-center justify-center rounded-md border border-destructive px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10"
+              >
+                退出登录
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              登录后才能在多台设备之间同步你的私有偏好；创建和加入共享空间也需要先登录账号。
+            </p>
+            {identity && (
+              <div className="rounded-md bg-amber-50 p-3 text-xs text-amber-700">
+                当前设备上已经有一个空间身份，但还没有绑定账号。登录后可以在这里手动绑定当前设备旧身份，不会重置已有共享数据。
+              </div>
+            )}
+            <button
+              onClick={() => router.push("/login?redirect=/settings")}
+              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              登录账号
+            </button>
+          </div>
+        )}
+      </section>
 
       <section className="rounded-xl border bg-card p-5 space-y-4">
         <h3 className="font-semibold">共享空间</h3>
@@ -146,8 +407,77 @@ export default function SettingsPage() {
               <div className="font-medium">{identity.profile.nickname}</div>
             </div>
             <div className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">
-              当前为本地后端模式，数据保存在本地服务器。
+              当前为本地后端模式：共享菜单和互动保存在本地服务器；私有偏好会跟账号绑定到当前空间身份。
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="rounded-md border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">连接状态</div>
+                <div className="text-sm font-medium">{connectionLabel}</div>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">增量游标</div>
+                <div className="text-sm font-medium">{syncStatus.cursor ?? 0}</div>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">最后事件</div>
+                <div className="text-sm font-medium">
+                  {syncStatus.lastEventAt ? new Date(syncStatus.lastEventAt).toLocaleTimeString("zh-CN") : "暂无"}
+                </div>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">未解决冲突</div>
+                <div className="text-sm font-medium">{syncStatus.conflictCount ?? conflicts.length}</div>
+              </div>
+            </div>
+            {members.length > 0 && (
+              <div className="text-sm">
+                <div className="text-muted-foreground mb-1">空间成员</div>
+                <div className="space-y-1">
+                  {members.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1">
+                      <span className="font-medium">
+                        {m.nickname}
+                        {!m.isAccountBound && <span className="ml-1 text-xs text-amber-600">待绑定</span>}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(m.joinedAt).toLocaleDateString("zh-CN")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {conflicts.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">同步冲突</div>
+                <div className="space-y-2">
+                  {conflicts.map((conflict) => (
+                    <div key={conflict.id} className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                      <div className="text-sm font-medium">
+                        {conflict.tableName} · {conflict.recordId.slice(0, 12)}
+                      </div>
+                      <div className="text-xs text-amber-700">
+                        本地待同步记录遇到了远端更新，请选择保留哪一边的版本。
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => handleResolveConflict(conflict.id, "keep-local")}
+                          className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                        >
+                          保留我的版本
+                        </button>
+                        <button
+                          onClick={() => handleResolveConflict(conflict.id, "accept-remote")}
+                          className="inline-flex items-center justify-center rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                        >
+                          接受远端版本
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 pt-2">
               <button
                 onClick={handleSyncNow}
@@ -298,26 +628,39 @@ export default function SettingsPage() {
       <section className="rounded-xl border bg-card p-5 space-y-4">
         <h3 className="font-semibold">数据备份</h3>
         <p className="text-sm text-muted-foreground">
-          你的所有数据都保存在浏览器本地，建议定期导出备份，以防清理缓存导致数据丢失。
+          {identity
+            ? "当前导出的是本地私有备份：包含界面设置、抽取历史，以及未加入共享空间的本地菜单、标签、模板、收藏、想吃、忌口、个人权重和本地场景清单；当前空间内跟账号绑定的私有偏好不进入个人备份。"
+            : "导出的是全量本地私有数据备份：包含界面设置、抽取历史、本地菜单、标签、模板、收藏、想吃、忌口、个人权重和本地场景清单。"}
         </p>
         <div className="flex flex-wrap gap-3">
           <button
             onClick={handleExport}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
-            导出备份（JSON）
+            导出备份（ZIP）
           </button>
-          <label className="inline-flex items-center justify-center rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-muted cursor-pointer">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!!identity}
+            className="inline-flex items-center justify-center rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
             导入备份
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json"
-              className="hidden"
-              onChange={handleImport}
-            />
-          </label>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip,.json,application/json,application/zip"
+            className="hidden"
+            disabled={!!identity}
+            onChange={handleImport}
+          />
         </div>
+        {identity && (
+          <p className="text-xs text-muted-foreground">
+            当前仍在共享空间中，导入个人备份会打乱空间归属，因此本轮仅允许在本地模式下恢复备份。
+          </p>
+        )}
         {lastBackupAt ? (
           <p className="text-xs text-muted-foreground">
             上次备份：{new Date(lastBackupAt).toLocaleString("zh-CN")}
@@ -332,7 +675,11 @@ export default function SettingsPage() {
 
       <section className="rounded-xl border bg-card p-5 space-y-4">
         <h3 className="font-semibold text-destructive">危险操作</h3>
-        <p className="text-sm text-muted-foreground">清空所有本地数据并恢复初始示例数据。</p>
+        <p className="text-sm text-muted-foreground">
+          {identity
+            ? "清空当前设备上的本地缓存并重新同步当前共享空间；不会退出空间，界面设置会保留，但当前空间下跟账号绑定的个人偏好和个人历史会被清空。"
+            : "清空所有本地数据并恢复初始示例数据。"}
+        </p>
         <button
           onClick={handleReset}
           className="inline-flex items-center justify-center rounded-md border border-destructive px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10"

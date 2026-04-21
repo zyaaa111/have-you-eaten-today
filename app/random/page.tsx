@@ -3,13 +3,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
-import { MenuItem, MenuItemKind, TagType } from "@/lib/types";
-import { rollSingle, rollCombo, RollResult } from "@/lib/roll";
+import { MenuItem, MenuItemKind, Profile, TagType } from "@/lib/types";
+import { rollSingle, rollCombo, type RollResult } from "@/lib/roll";
 import { getDefaultDedupDays, getDedupEnabled } from "@/lib/settings";
 import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
+import { getRecommendations, type RecommendationItem } from "@/lib/recommendations";
 import { MenuItemFormDialog } from "@/components/menu-item-form-dialog";
 import { ChefHat, Bike, Dices, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getLocalIdentity } from "@/lib/identity";
+import { useAuth } from "@/components/auth-provider";
+import { syncEngine } from "@/lib/sync-engine";
+import { buildApiUrl } from "@/lib/api-base";
 
 const typeLabels: Record<TagType, string> = {
   cuisine: "菜系",
@@ -30,13 +35,21 @@ interface ShuffleItem {
 }
 
 export default function RandomPage() {
+  const { user } = useAuth();
+  const [identity, setIdentity] = useState<ReturnType<typeof getLocalIdentity>>(null);
+  const [members, setMembers] = useState<Profile[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+
   const menuItems = useLiveQuery(() => db.menuItems.toArray(), []) || [];
   const allTags = useLiveQuery(() => db.tags.toArray(), []) || [];
   const templates = useLiveQuery(() => db.comboTemplates.toArray(), []) || [];
+  const menuGroups = useLiveQuery(() => db.menuGroups.orderBy("sortOrder").toArray(), []) || [];
+  const menuGroupItems = useLiveQuery(() => db.menuGroupItems.toArray(), []) || [];
 
   const [mode, setMode] = useState<"single" | "combo">("single");
   const [kind, setKind] = useState<"all" | MenuItemKind>("all");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [ignoreDedup, setIgnoreDedup] = useState(false);
   const [rolling, setRolling] = useState(false);
@@ -49,14 +62,113 @@ export default function RandomPage() {
   const [autoRollPending, setAutoRollPending] = useState(false);
   const [dedupDays, setDedupDays] = useState<number>(7);
   const [dedupEnabled, setDedupEnabled] = useState<boolean>(true);
+  const [sharedRecommendations, setSharedRecommendations] = useState<RecommendationItem[]>([]);
+  const [sharedRecommendationsLoading, setSharedRecommendationsLoading] = useState(false);
+
   const shuffleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const activeScopeKey = identity ? `profile:${identity.profile.id}:${identity.space.id}` : "local";
+
+  const visibleGroups = useMemo(
+    () =>
+      menuGroups.filter((group) =>
+        identity
+          ? group.scope === "profile" && group.profileId === identity.profile.id && group.spaceId === identity.space.id
+          : group.scope === "local"
+      ),
+    [identity, menuGroups]
+  );
+
+  const visibleGroupItems = useMemo(
+    () =>
+      menuGroupItems.filter((item) =>
+        identity
+          ? item.profileId === identity.profile.id && item.spaceId === identity.space.id
+          : !item.profileId && !item.spaceId
+      ),
+    [identity, menuGroupItems]
+  );
+
+  const filteredGroupMenuItemIds =
+    selectedGroupId === "all"
+      ? undefined
+      : visibleGroupItems.filter((entry) => entry.groupId === selectedGroupId).map((entry) => entry.menuItemId);
+
+  const localRecommendations = useLiveQuery(
+    () =>
+      getRecommendations({
+        kind: mode === "single" && kind !== "all" ? kind : undefined,
+        tagIds: mode === "single" ? selectedTagIds : undefined,
+        menuItemIds: mode === "single" ? filteredGroupMenuItemIds : undefined,
+        limit: 5,
+      }),
+    [mode, kind, selectedGroupId, JSON.stringify(selectedTagIds), JSON.stringify(filteredGroupMenuItemIds), activeScopeKey]
+  ) ?? [];
+
+  const recommendations = identity && user && selectedMemberIds.length > 1 ? sharedRecommendations : localRecommendations;
 
   useEffect(() => {
     getDefaultDedupDays().then(setDedupDays);
     getDedupEnabled().then(setDedupEnabled);
-  }, []);
 
-  // 从 URL 解析 kind / templateId 参数
+    const localIdentity = getLocalIdentity();
+    setIdentity(localIdentity);
+    if (localIdentity) {
+      setSelectedMemberIds([localIdentity.profile.id]);
+      void syncEngine.fetchProfiles(localIdentity.space.id).then(setMembers).catch(() => setMembers([]));
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!identity || !user || selectedMemberIds.length <= 1 || mode !== "single") {
+      setSharedRecommendations([]);
+      setSharedRecommendationsLoading(false);
+      return;
+    }
+
+    let active = true;
+    const run = async () => {
+      setSharedRecommendationsLoading(true);
+      try {
+        const recentHistoryIds = await getRecentHistoryIds();
+        const response = await fetch(buildApiUrl("/recommendations/multi-member"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            space_id: identity.space.id,
+            profile_ids: selectedMemberIds,
+            kind: kind !== "all" ? kind : undefined,
+            tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
+            menu_item_ids: filteredGroupMenuItemIds,
+            recent_history_ids: recentHistoryIds,
+            limit: 5,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = (await response.json()) as RecommendationItem[];
+        if (active) {
+          setSharedRecommendations(data);
+        }
+      } catch (error) {
+        console.error("Shared recommendations failed:", error);
+        if (active) {
+          setSharedRecommendations([]);
+        }
+      } finally {
+        if (active) {
+          setSharedRecommendationsLoading(false);
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [filteredGroupMenuItemIds, identity?.space.id, kind, mode, selectedMemberIds, selectedTagIds, user]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -72,52 +184,63 @@ export default function RandomPage() {
     }
   }, []);
 
-  // 自动触发组合抽（从模板页「试用」跳转而来）
   useEffect(() => {
     if (!autoRollPending) return;
     if (!selectedTemplateId || templates.length === 0) return;
-    const exists = templates.some((t) => t.id === selectedTemplateId);
+    const exists = templates.some((template) => template.id === selectedTemplateId);
     if (!exists) {
       setAutoRollPending(false);
       return;
     }
     setMode("combo");
     setAutoRollPending(false);
-    performRoll("combo", selectedTemplateId);
+    void performRoll("combo", selectedTemplateId);
   }, [autoRollPending, selectedTemplateId, templates]);
 
+  useEffect(() => {
+    return () => stopShuffle();
+  }, []);
+
   const groupedTags = useMemo(() => {
-    const g: Record<TagType, typeof allTags> = { cuisine: [], category: [], custom: [] };
-    allTags.forEach((t) => g[t.type].push(t));
-    return g;
+    const grouped: Record<TagType, typeof allTags> = { cuisine: [], category: [], custom: [] };
+    allTags.forEach((tag) => grouped[tag.type].push(tag));
+    return grouped;
   }, [allTags]);
 
   const toggleTag = (id: string) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((tagId) => tagId !== id) : [...prev, id]));
   };
 
   const getShufflePool = (): ShuffleItem[] => {
+    const allowedGroupIds =
+      selectedGroupId === "all"
+        ? null
+        : new Set(
+            visibleGroupItems.filter((entry) => entry.groupId === selectedGroupId).map((entry) => entry.menuItemId)
+          );
     if (mode === "combo") {
-      return menuItems.map((m) => ({ name: m.name, kind: m.kind, shop: m.shop }));
+      return menuItems
+        .filter((item) => !allowedGroupIds || allowedGroupIds.has(item.id))
+        .map((item) => ({ name: item.name, kind: item.kind, shop: item.shop }));
     }
-    let pool = menuItems.filter((m) => {
-      if (kind !== "all" && m.kind !== kind) return false;
-      if (selectedTagIds.length > 0 && !selectedTagIds.some((tid) => m.tags.includes(tid))) return false;
+
+    let pool = menuItems.filter((item) => {
+      if (kind !== "all" && item.kind !== kind) return false;
+      if (selectedTagIds.length > 0 && !selectedTagIds.some((tagId) => item.tags.includes(tagId))) return false;
+      if (allowedGroupIds && !allowedGroupIds.has(item.id)) return false;
       return true;
     });
     if (pool.length === 0) pool = menuItems;
-    return pool.map((m) => ({ name: m.name, kind: m.kind, shop: m.shop }));
+    return pool.map((item) => ({ name: item.name, kind: item.kind, shop: item.shop }));
   };
 
   const startShuffle = (pool: ShuffleItem[]) => {
     if (pool.length === 0) return;
-    let idx = 0;
+    let index = 0;
     if (shuffleTimerRef.current) clearInterval(shuffleTimerRef.current);
     shuffleTimerRef.current = setInterval(() => {
-      idx = (idx + 1) % pool.length;
-      setShuffleDisplay(pool[idx]);
+      index = (index + 1) % pool.length;
+      setShuffleDisplay(pool[index]!);
     }, 80);
   };
 
@@ -129,10 +252,7 @@ export default function RandomPage() {
     setShuffleDisplay(null);
   };
 
-  const performRoll = async (
-    rollMode: "single" | "combo" = mode,
-    templateId: string | null = selectedTemplateId
-  ) => {
+  const performRoll = async (rollMode: "single" | "combo" = mode, templateId: string | null = selectedTemplateId) => {
     setResult(null);
     setRolling(true);
     const pool = getShufflePool();
@@ -142,9 +262,38 @@ export default function RandomPage() {
     const startTime = Date.now();
 
     try {
-      let res: RollResult | null = null;
-      if (rollMode === "single") {
-        res = await rollSingle({
+      let nextResult: RollResult | null = null;
+      const shouldUseSharedRoll = !!identity && !!user && selectedMemberIds.length > 1;
+
+      if (shouldUseSharedRoll) {
+        const recentHistoryIds = await getRecentHistoryIds();
+        const response = await fetch(buildApiUrl("/roll/multi-member"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            space_id: identity.space.id,
+            profile_ids: selectedMemberIds,
+            kind: rollMode === "single" && kind !== "all" ? kind : undefined,
+            tag_ids: rollMode === "single" && selectedTagIds.length > 0 ? selectedTagIds : undefined,
+            menu_item_ids: rollMode === "single" ? filteredGroupMenuItemIds : undefined,
+            recent_history_ids: recentHistoryIds,
+            template_id: rollMode === "combo" ? templateId : undefined,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        nextResult = (await response.json()) as RollResult;
+        await db.rollHistory.add({
+          id: crypto.randomUUID(),
+          rolledAt: Date.now(),
+          items: nextResult.items,
+          ruleSnapshot: nextResult.ruleSnapshot,
+          ignoredDedup: nextResult.ignoredDedup,
+        });
+      } else if (rollMode === "single") {
+        nextResult = await rollSingle({
           kind: kind === "all" ? undefined : kind,
           tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
           ignoreDedup,
@@ -155,7 +304,7 @@ export default function RandomPage() {
           setRolling(false);
           return;
         }
-        res = await rollCombo({
+        nextResult = await rollCombo({
           templateId,
           ignoreDedup,
         });
@@ -166,17 +315,15 @@ export default function RandomPage() {
       await new Promise((resolve) => setTimeout(resolve, remaining));
 
       stopShuffle();
-      setResult(res);
+      setResult(nextResult);
     } finally {
       stopShuffle();
       setRolling(false);
     }
   };
 
-  const handleRoll = () => performRoll();
-
-  const openDetail = (item: RollResult["items"][number]) => {
-    const full = menuItems.find((m) => m.id === item.menuItemId) || null;
+  const openDetail = async (item: RollResult["items"][number]) => {
+    const full = menuItems.find((menuItem) => menuItem.id === item.menuItemId) || null;
     if (full) {
       setDetailItem(full);
       setDetailOpen(true);
@@ -194,31 +341,23 @@ export default function RandomPage() {
     if (!ok) return;
     await db.menuItems.delete(item.id);
     setDetailOpen(false);
-    // 如果当前结果中包含被删除的项，建议刷新结果展示（可选）
-    setResult((prev) =>
+    setResult((prev: RollResult | null) =>
       prev
         ? {
             ...prev,
-            items: prev.items.filter((i) => i.menuItemId !== item.id),
+            items: prev.items.filter((entry) => entry.menuItemId !== item.id),
           }
         : null
     );
   };
 
-  // 清理定时器
-  useEffect(() => {
-    return () => stopShuffle();
-  }, []);
-
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
-      {/* Header */}
       <div className="text-center py-4 md:py-8">
         <h2 className="text-2xl md:text-3xl font-bold mb-2">今天吃什么？</h2>
         <p className="text-muted-foreground">让随机来帮你做决定</p>
       </div>
 
-      {/* Mode switch */}
       <div className="flex justify-center">
         <div className="inline-flex rounded-full border bg-muted p-1">
           <button
@@ -242,34 +381,44 @@ export default function RandomPage() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="rounded-xl border bg-card p-4 space-y-4">
         {mode === "single" ? (
           <>
             <div className="flex flex-wrap gap-2">
-              {(["all", "recipe", "takeout"] as const).map((k) => (
+              {(["all", "recipe", "takeout"] as const).map((value) => (
                 <button
-                  key={k}
-                  onClick={() => setKind(k)}
+                  key={value}
+                  onClick={() => setKind(value)}
                   className={cn(
                     "rounded-full border px-3 py-1.5 text-sm transition",
-                    kind === k
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background hover:bg-muted"
+                    kind === value ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
                   )}
                 >
-                  {k === "all" ? "全部" : k === "recipe" ? "菜谱" : "外卖"}
+                  {value === "all" ? "全部" : value === "recipe" ? "菜谱" : "外卖"}
                 </button>
               ))}
             </div>
 
             <div className="space-y-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-muted-foreground w-10">清单</span>
+                <select
+                  value={selectedGroupId}
+                  onChange={(event) => setSelectedGroupId(event.target.value)}
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="all">全部菜单</option>
+                  {visibleGroups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {(["cuisine", "category", "custom"] as TagType[]).map((type) =>
                 groupedTags[type].length > 0 ? (
                   <div key={type} className="flex flex-wrap gap-2 items-center">
-                    <span className="text-xs text-muted-foreground w-10">
-                      {typeLabels[type]}
-                    </span>
+                    <span className="text-xs text-muted-foreground w-10">{typeLabels[type]}</span>
                     {groupedTags[type].map((tag) => {
                       const active = selectedTagIds.includes(tag.id);
                       return (
@@ -278,9 +427,7 @@ export default function RandomPage() {
                           onClick={() => toggleTag(tag.id)}
                           className={cn(
                             "rounded-full border px-2.5 py-1 text-xs transition",
-                            active
-                              ? typeColors[type]
-                              : "bg-background text-muted-foreground hover:bg-muted"
+                            active ? typeColors[type] : "bg-background text-muted-foreground hover:bg-muted"
                           )}
                         >
                           {active ? "✓ " : ""}
@@ -300,30 +447,69 @@ export default function RandomPage() {
               选择模板
             </div>
             {templates.length === 0 ? (
-              <div className="text-sm text-muted-foreground">
-                还没有组合模板，先到「模板」页面创建一个吧。
-              </div>
+              <div className="text-sm text-muted-foreground">还没有组合模板，先到「模板」页面创建一个吧。</div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {templates.map((t) => (
+                {templates.map((template) => (
                   <button
-                    key={t.id}
-                    onClick={() => setSelectedTemplateId(t.id)}
+                    key={template.id}
+                    onClick={() => setSelectedTemplateId(template.id)}
                     className={cn(
                       "text-left rounded-lg border px-4 py-3 transition",
-                      selectedTemplateId === t.id
-                        ? "border-primary bg-primary/5"
-                        : "bg-background hover:bg-muted"
+                      selectedTemplateId === template.id ? "border-primary bg-primary/5" : "bg-background hover:bg-muted"
                     )}
                   >
-                    <div className="font-medium">{t.name}</div>
+                    <div className="font-medium">{template.name}</div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      {t.rules.length} 条规则 · 共 {t.rules.reduce((s, r) => s + r.count, 0)} 项
+                      {template.rules.length} 条规则 · 共 {template.rules.reduce((sum, rule) => sum + rule.count, 0)} 项
                     </div>
                   </button>
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {identity && members.length > 0 && (
+          <div className="space-y-2 border-t pt-4">
+            <div className="text-sm font-medium">参与成员</div>
+            <div className="flex flex-wrap gap-2">
+              {members.map((member) => {
+                const checked = selectedMemberIds.includes(member.id);
+                return (
+                  <button
+                    key={member.id}
+                    type="button"
+                    disabled={!member.isAccountBound}
+                    onClick={() => {
+                      if (!member.isAccountBound) return;
+                      setSelectedMemberIds((prev) => {
+                        if (prev.includes(member.id)) {
+                          if (prev.length === 1) return prev;
+                          return prev.filter((id) => id !== member.id);
+                        }
+                        return [...prev, member.id];
+                      });
+                    }}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-sm transition",
+                      checked
+                        ? "border-primary bg-primary/10 text-primary"
+                        : member.isAccountBound
+                          ? "bg-background hover:bg-muted"
+                          : "cursor-not-allowed bg-muted/40 text-muted-foreground"
+                    )}
+                  >
+                    {checked ? "✓ " : ""}
+                    {member.nickname}
+                    {!member.isAccountBound ? "（待绑定）" : ""}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              每次手动选择参与成员。多人模式下只展示汇总结果和汇总理由，不会暴露其他成员的私有偏好明细。
+            </p>
           </div>
         )}
 
@@ -334,32 +520,61 @@ export default function RandomPage() {
               type="checkbox"
               checked={!dedupEnabled || ignoreDedup}
               disabled={!dedupEnabled}
-              onChange={(e) => setIgnoreDedup(e.target.checked)}
+              onChange={(event) => setIgnoreDedup(event.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary disabled:opacity-50"
             />
             <label
               htmlFor="ignoreDedup"
-              className={`text-sm cursor-pointer ${dedupEnabled ? "text-muted-foreground" : "text-muted-foreground/60"}`}
+              className={cn("text-sm cursor-pointer", dedupEnabled ? "text-muted-foreground" : "text-muted-foreground/60")}
             >
               忽略近期去重
             </label>
           </div>
           {dedupEnabled ? (
-            !ignoreDedup && (
-              <span className="text-xs text-muted-foreground">
-                近 {dedupDays} 天内不重复
-              </span>
-            )
+            !ignoreDedup && <span className="text-xs text-muted-foreground">近 {dedupDays} 天内不重复</span>
           ) : (
             <span className="text-xs text-amber-600">当前已全局关闭去重</span>
           )}
         </div>
       </div>
 
-      {/* Roll button */}
+      {mode === "single" && (recommendations.length > 0 || sharedRecommendationsLoading) && (
+        <div className="rounded-xl border bg-card p-4 space-y-3">
+          <div>
+            <div className="text-sm font-medium">推荐候选</div>
+            <div className="text-xs text-muted-foreground">
+              {identity && user && selectedMemberIds.length > 1
+                ? "当前展示的是多人聚合推荐结果，只返回汇总理由，不返回成员私有偏好明细。"
+                : "推荐不会替代随机，只是给你一个更快的候选列表。"}
+            </div>
+          </div>
+          {sharedRecommendationsLoading ? (
+            <div className="text-sm text-muted-foreground">正在计算多人推荐…</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {recommendations.map(({ item, reasons, score }) => (
+                <button
+                  key={item.id}
+                  onClick={() => openDetail({ menuItemId: item.id, name: item.name, kind: item.kind, shop: item.shop })}
+                  className="rounded-lg border bg-background p-3 text-left hover:bg-muted/40"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{item.name}</div>
+                    <div className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                      {score.toFixed(1)}
+                    </div>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">{reasons.slice(0, 3).join(" · ") || "综合推荐"}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex justify-center">
         <button
-          onClick={handleRoll}
+          onClick={() => void performRoll()}
           disabled={rolling || (mode === "combo" && !selectedTemplateId)}
           className={cn(
             "inline-flex items-center gap-2 rounded-full px-8 py-4 text-lg font-semibold shadow-lg transition",
@@ -373,7 +588,6 @@ export default function RandomPage() {
         </button>
       </div>
 
-      {/* Result or Shuffle */}
       {(result || (rolling && shuffleDisplay)) && (
         <div className="space-y-4 animate-in fade-in zoom-in duration-300">
           {result?.ignoredDedup && (
@@ -385,20 +599,18 @@ export default function RandomPage() {
 
           <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-4">
             <div className="text-center">
-              <div className="text-sm text-muted-foreground mb-1">
-                {result ? result.ruleSnapshot : "正在抽取…"}
-              </div>
-              <div className="text-lg font-semibold">
-                {mode === "single" ? "抽取结果" : "组合结果"}
-              </div>
+              <div className="text-sm text-muted-foreground mb-1">{result ? result.ruleSnapshot : "正在抽取…"}</div>
+              <div className="text-lg font-semibold">{mode === "single" ? "抽取结果" : "组合结果"}</div>
             </div>
 
             <div className="space-y-3">
-              {(result?.items || (rolling && shuffleDisplay ? [shuffleDisplay] : [])).map((item, idx) => (
+              {(result?.items || (rolling && shuffleDisplay ? [shuffleDisplay] : [])).map((item: RollResult["items"][number] | ShuffleItem, index: number) => (
                 <button
-                  key={idx}
+                  key={index}
                   onClick={() => {
-                    if (result && "menuItemId" in item) openDetail(item as RollResult["items"][number]);
+                    if (result && "menuItemId" in item) {
+                      void openDetail(item as RollResult["items"][number]);
+                    }
                   }}
                   disabled={!result}
                   className={cn(
@@ -420,9 +632,7 @@ export default function RandomPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-lg font-bold truncate">{item.name}</div>
-                    {item.shop && (
-                      <div className="text-sm text-muted-foreground truncate">{item.shop}</div>
-                    )}
+                    {item.shop && <div className="text-sm text-muted-foreground truncate">{item.shop}</div>}
                   </div>
                   {result && <div className="text-sm text-muted-foreground">查看详情 →</div>}
                 </button>
@@ -432,7 +642,7 @@ export default function RandomPage() {
             {result && (
               <div className="flex justify-center gap-3 pt-2">
                 <button
-                  onClick={handleRoll}
+                  onClick={() => void performRoll()}
                   className="inline-flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 active:scale-95 transition"
                 >
                   <Dices className="w-4 h-4" />
@@ -444,19 +654,9 @@ export default function RandomPage() {
         </div>
       )}
 
-      {!result && !rolling && (
-        <div className="text-center text-sm text-muted-foreground">
-          当前菜单共 {menuItems.length} 项，准备好就开始吧！
-        </div>
-      )}
+      {!result && !rolling && <div className="text-center text-sm text-muted-foreground">当前菜单共 {menuItems.length} 项，准备好就开始吧！</div>}
 
-      <MenuItemDetailDialog
-        item={detailItem}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-      />
+      <MenuItemDetailDialog item={detailItem} open={detailOpen} onOpenChange={setDetailOpen} onEdit={handleEdit} onDelete={handleDelete} />
 
       <MenuItemFormDialog
         open={formOpen}
@@ -468,4 +668,9 @@ export default function RandomPage() {
       />
     </div>
   );
+}
+
+async function getRecentHistoryIds(): Promise<string[]> {
+  const history = await db.rollHistory.orderBy("rolledAt").reverse().limit(20).toArray();
+  return Array.from(new Set(history.flatMap((entry) => entry.items.map((item) => item.menuItemId))));
 }

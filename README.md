@@ -1,8 +1,8 @@
 # 🍚 今天吃了吗
 
-一个帮你解决"今天吃什么"烦恼的轻量级 Web 应用。支持菜单管理、随机抽选、组合模板、历史记录和多设备同步，可安装为 PWA 在手机上使用。
+一个帮你解决"今天吃什么"烦恼的轻量级 Web 应用。支持菜单管理、随机抽选、场景清单、收藏与推荐、历史记录，以及共享空间的 SSE + 增量同步，可安装为 PWA 在手机上使用。
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)
@@ -22,20 +22,28 @@
 - 添加 / 编辑 / 删除菜品
 - 为菜品设置标签（如：川菜、快手菜、汤）
 - 记录所需材料和烹饪步骤
+- 图片改为本地文件存储，不再把 base64 直接写入菜单记录
 - 支持标签筛选和搜索
 
 ### 🏷️ 标签与模板
 - 灵活的标签体系，便于分类和筛选
 - 组合模板支持按标签规则批量抽选
 
+### ⭐ 收藏、推荐与场景清单
+- 收藏作为个人私有能力，便于快速回看常吃菜单
+- 推荐列表会结合想吃、个人权重、互动热度和近期历史给出候选
+- 场景清单支持把常见菜单整理成可复用的“工作日晚餐 / 聚餐备选”列表
+
 ### 📜 历史记录
 - 自动记录每次抽选结果
 - 查看"今天吃了什么"以及过往历史
 
-### 🔄 多设备同步
-- 通过 **Space ID** 加入同一空间
-- 多台设备共享同一份菜单和数据
-- 支持匿名加入，无需注册账号
+### 🔄 共享空间同步
+- 通过 **账号登录 + 邀请码** 加入同一空间
+- 首次进入空间做全量拉取，后续通过 **SSE 事件通知 + 增量拉取** 进行同步
+- SSE 不可用时会自动回退到指数退避轮询
+- 支持展示同步状态、增量游标和未解决冲突
+- 所有共享接口都要求登录态和空间成员身份校验，客户端不能再伪造 `profile_id / space_id`
 
 ### 📱 PWA 支持
 - 可安装到手机桌面，离线也能使用基础功能
@@ -80,6 +88,32 @@ npm run dev
 ```
 
 默认访问地址为 `http://localhost:3000`。
+
+### 账号与找回密码
+
+- 当前登录方式为 **邮箱 + 密码**
+- 注册时只校验邮箱格式、密码强度和邮箱唯一性，不做邮箱归属验证
+- 忘记密码与老账号首次设密使用 **QQ SMTP**
+- 真实 SMTP 凭据只放在本机 `.env.local` 或部署平台环境变量中，不要写入 Git
+- 仓库中的 `.env.example` 只提供占位示例
+
+如果你要启用找回密码，请在 `.env.local` 中配置：
+
+```bash
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your-qq-mail@qq.com
+SMTP_PASS=your-qq-smtp-authorize-code
+AUTH_FROM_EMAIL="今天吃了吗 <your-qq-mail@qq.com>"
+```
+
+说明：
+
+- 需要先在 QQ 邮箱里开启 `SMTP/IMAP`
+- 发信使用 **QQ 邮箱授权码**，不是邮箱登录密码
+- QQ SMTP 适合低频事务邮件，不适合高频验证码登录
+- 如果未配置 SMTP，注册和登录仍可用，但“忘记密码”会明确报错
 
 ### 生产构建
 
@@ -138,7 +172,19 @@ npm run test
 
 # CI 模式运行
 npm run test:run
+
+# Playwright 端到端
+npm run test:e2e
 ```
+
+---
+
+## 💾 备份说明
+
+- 导出的是 **ZIP 格式的本地私有数据备份**：包含 `backup.json + images/`，其中会打包界面设置、忌口、个人权重、抽取历史，以及未加入共享空间的本地菜单、标签、模板和本地图片文件。
+- 共享空间同步来的菜单、标签、模板、点赞和评论不进入个人备份。
+- 当前仍在共享空间时不能直接导入个人备份；如需恢复，请先退出空间。
+- 旧的 JSON 备份仍然兼容导入。
 
 ---
 
@@ -168,7 +214,7 @@ have-you-eaten-today/
 
 ## 📝 版本与更新日志
 
-当前版本：**v1.1.0**
+当前版本：**v2.0.0**
 
 完整更新日志请查看 [CHANGELOG.md](./CHANGELOG.md)。
 

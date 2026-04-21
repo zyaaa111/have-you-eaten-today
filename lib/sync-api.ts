@@ -1,6 +1,7 @@
 import { db } from "./db-server";
 import { sanitizeMenuItemRecord } from "./menu-item-sanitize";
 import { buildLikeId } from "./like-id";
+import { redactUnboundProfileReferences } from "./server-profile-redaction";
 
 export type SyncTable = "menu_items" | "tags" | "combo_templates" | "likes" | "comments";
 
@@ -26,8 +27,8 @@ function sanitizeTableRecord(table: SyncTable, row: Record<string, unknown>): Re
   return table === "menu_items" ? sanitizeMenuItemRecord(row) : row;
 }
 
-export function mapRows(table: SyncTable, rows: Record<string, unknown>[]) {
-  return rows.map((r) => {
+export function mapRows(table: SyncTable, rows: Record<string, unknown>[], spaceId?: string) {
+  const mappedRows = rows.map((r) => {
     const c = toCamelCase(r);
     if (typeof c.tags === "string") c.tags = JSON.parse(c.tags);
     if (typeof c.ingredients === "string" && c.ingredients) c.ingredients = JSON.parse(c.ingredients);
@@ -37,6 +38,7 @@ export function mapRows(table: SyncTable, rows: Record<string, unknown>[]) {
     if (c.isAnonymous !== undefined) c.isAnonymous = Boolean(c.isAnonymous);
     return sanitizeTableRecord(table, c);
   });
+  return spaceId ? redactUnboundProfileReferences(spaceId, mappedRows) : mappedRows;
 }
 
 export function buildUpsertStatement(table: SyncTable) {
@@ -105,7 +107,7 @@ export function buildUpsertStatement(table: SyncTable) {
 
 export function pullTable(table: SyncTable, spaceId: string) {
   const rows = db.prepare(`SELECT * FROM ${table} WHERE space_id = ?`).all(spaceId) as Record<string, unknown>[];
-  return mapRows(table, rows);
+  return mapRows(table, rows, spaceId);
 }
 
 export function pushTable(table: SyncTable, items: Record<string, unknown>[]) {

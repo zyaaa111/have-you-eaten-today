@@ -2,7 +2,10 @@ import { db } from "./db";
 import type { Comment } from "./types";
 import { getCurrentProfileId, getCurrentSpaceId, enrich } from "./space-ops";
 import { generateAnonymousNickname } from "./anonymous-nickname";
-import { getLocalIdentity } from "./supabase";
+import { getLocalIdentity } from "./identity";
+
+const COMMENT_UNDO_WINDOW_MS = 30_000;
+const recentlyDeletedComments = new Map<string, { comment: Comment; expiresAt: number }>();
 
 export async function getCommentsByMenuItem(menuItemId: string): Promise<Comment[]> {
   return db.comments
@@ -63,7 +66,7 @@ export async function addComment(menuItemId: string, content: string, isAnonymou
   return comment;
 }
 
-export async function deleteComment(commentId: string): Promise<void> {
+export async function deleteComment(commentId: string): Promise<Comment | null> {
   const profileId = getCurrentProfileId();
   const spaceId = getCurrentSpaceId();
   if (!profileId) {
@@ -71,7 +74,7 @@ export async function deleteComment(commentId: string): Promise<void> {
   }
 
   const comment = await db.comments.get(commentId);
-  if (!comment) return;
+  if (!comment) return null;
   if (comment.profileId !== profileId) {
     throw new Error("只能删除自己的评论");
   }
@@ -85,4 +88,66 @@ export async function deleteComment(commentId: string): Promise<void> {
       createdAt: Date.now(),
     });
   }
+  recentlyDeletedComments.set(commentId, {
+    comment,
+    expiresAt: Date.now() + COMMENT_UNDO_WINDOW_MS,
+  });
+  return comment;
+}
+
+export async function updateComment(commentId: string, content: string): Promise<void> {
+  const MAX_CONTENT_LENGTH = 2000;
+  if (!content.trim()) {
+    throw new Error("评论内容不能为空");
+  }
+  if (content.length > MAX_CONTENT_LENGTH) {
+    throw new Error(`评论内容不能超过 ${MAX_CONTENT_LENGTH} 个字符`);
+  }
+
+  const profileId = getCurrentProfileId();
+  if (!profileId) {
+    throw new Error("请先加入或创建空间");
+  }
+
+  const comment = await db.comments.get(commentId);
+  if (!comment) {
+    throw new Error("评论不存在");
+  }
+  if (comment.profileId !== profileId) {
+    throw new Error("只能编辑自己的评论");
+  }
+
+  const updatedAt = Date.now();
+  await db.comments.update(commentId, {
+    content,
+    updatedAt,
+    syncStatus: "pending",
+    version: (comment.version ?? 1) + 1,
+  });
+}
+
+export async function restoreDeletedComment(commentId: string): Promise<boolean> {
+  const pending = recentlyDeletedComments.get(commentId);
+  if (!pending || pending.expiresAt < Date.now()) {
+    recentlyDeletedComments.delete(commentId);
+    return false;
+  }
+
+  const restored: Comment = {
+    ...pending.comment,
+    updatedAt: Date.now(),
+    syncStatus: "pending",
+    version: (pending.comment.version ?? 1) + 1,
+  };
+
+  await db.transaction("rw", [db.comments, db.pendingDeletions], async () => {
+    await db.pendingDeletions.where({ tableName: "comments", recordId: commentId }).delete();
+    await db.comments.put(restored);
+  });
+  recentlyDeletedComments.delete(commentId);
+  return true;
+}
+
+export function getCommentUndoWindowMs(): number {
+  return COMMENT_UNDO_WINDOW_MS;
 }

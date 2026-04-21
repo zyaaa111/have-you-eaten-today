@@ -9,6 +9,7 @@ import { syncEngine } from "@/lib/sync-engine";
 import { v4 as uuidv4 } from "uuid";
 import { Plus, Pencil, Trash2, X, Check } from "lucide-react";
 import { useEffect } from "react";
+import { useAuth } from "@/components/auth-provider";
 
 const typeLabels: Record<TagType, string> = {
   cuisine: "菜系",
@@ -23,6 +24,7 @@ const typeColors: Record<TagType, string> = {
 };
 
 export default function TagsPage() {
+  const { user } = useAuth();
   const tags = useLiveQuery(() => db.tags.toArray(), []) || [];
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -129,12 +131,10 @@ export default function TagsPage() {
       }
     };
 
-    const sub = syncEngine.subscribeToChanges(() => {
-      void pullChangesSafely();
-    });
+    const sub = syncEngine.subscribeToChanges(pullChangesSafely);
     void pullChangesSafely();
     return () => sub.unsubscribe();
-  }, []);
+  }, [user?.id]);
 
   return (
     <div className="space-y-6">

@@ -2,10 +2,16 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { buildLikeId } from "./like-id";
+import { getMenuItemImagePublicUrl, parseDataUrlImage } from "./image-storage";
+import { isDataUrlImage } from "./image-utils";
 
 const DATA_DIR = path.resolve(process.cwd(), "server", "data");
+const MENU_ITEM_IMAGE_DIR = path.resolve(DATA_DIR, "uploads", "menu-items");
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(MENU_ITEM_IMAGE_DIR)) {
+  fs.mkdirSync(MENU_ITEM_IMAGE_DIR, { recursive: true });
 }
 
 const dbPath = path.join(DATA_DIR, "menu.db");
@@ -16,6 +22,21 @@ db.pragma("journal_mode = WAL");
 db.pragma("recursive_triggers = OFF");
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
   CREATE TABLE IF NOT EXISTS spaces (
     id TEXT PRIMARY KEY,
     invite_code TEXT NOT NULL UNIQUE,
@@ -26,6 +47,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS profiles (
     id TEXT PRIMARY KEY,
     space_id TEXT NOT NULL,
+    user_id TEXT,
     nickname TEXT NOT NULL,
     joined_at INTEGER NOT NULL
   );
@@ -73,6 +95,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS change_logs (
     id TEXT PRIMARY KEY,
+    seq INTEGER,
     space_id TEXT NOT NULL,
     profile_id TEXT,
     actor_nickname TEXT,
@@ -112,8 +135,86 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_comments_space ON comments(space_id);
   CREATE INDEX IF NOT EXISTS idx_comments_profile ON comments(profile_id);
 
+  CREATE TABLE IF NOT EXISTS profile_avoidances (
+    profile_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    menu_item_id TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, menu_item_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_avoidances_space ON profile_avoidances(space_id, profile_id);
+
+  CREATE TABLE IF NOT EXISTS profile_wishes (
+    profile_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    menu_item_id TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, menu_item_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_wishes_space ON profile_wishes(space_id, profile_id);
+
+  CREATE TABLE IF NOT EXISTS profile_weights (
+    profile_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    menu_item_id TEXT NOT NULL,
+    weight REAL NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, menu_item_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_weights_space ON profile_weights(space_id, profile_id);
+
+  CREATE TABLE IF NOT EXISTS profile_favorites (
+    profile_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    menu_item_id TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, menu_item_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_favorites_space ON profile_favorites(space_id, profile_id);
+
+  CREATE TABLE IF NOT EXISTS profile_groups (
+    id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    sort_order INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_groups_profile ON profile_groups(profile_id, sort_order);
+
+  CREATE TABLE IF NOT EXISTS profile_group_items (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    profile_id TEXT NOT NULL,
+    menu_item_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    sort_order INTEGER NOT NULL,
+    UNIQUE(group_id, menu_item_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_group_items_profile ON profile_group_items(profile_id, group_id);
+
   CREATE INDEX IF NOT EXISTS idx_change_logs_space ON change_logs(space_id);
   CREATE INDEX IF NOT EXISTS idx_change_logs_record ON change_logs(table_name, record_id);
+
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    used_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+  CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires ON password_reset_tokens(expires_at);
+
+  CREATE TABLE IF NOT EXISTS auth_rate_limits (
+    id TEXT PRIMARY KEY,
+    attempts INTEGER NOT NULL,
+    window_started_at INTEGER NOT NULL,
+    blocked_until INTEGER
+  );
 `);
 
 function dropCrudTriggers(table: string) {
@@ -176,9 +277,34 @@ if (hasLegacyWeight) {
 }
 
 const changeLogColumns = db.prepare("PRAGMA table_info(change_logs)").all() as { name: string }[];
+const profileColumns = db.prepare("PRAGMA table_info(profiles)").all() as { name: string }[];
+const userColumns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+if (!changeLogColumns.some((column) => column.name === "seq")) {
+  db.exec(`ALTER TABLE change_logs ADD COLUMN seq INTEGER`);
+}
 if (!changeLogColumns.some((column) => column.name === "actor_nickname")) {
   db.exec(`ALTER TABLE change_logs ADD COLUMN actor_nickname TEXT`);
 }
+if (!profileColumns.some((column) => column.name === "user_id")) {
+  db.exec(`ALTER TABLE profiles ADD COLUMN user_id TEXT`);
+}
+if (!userColumns.some((column) => column.name === "password_hash")) {
+  db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
+}
+if (!userColumns.some((column) => column.name === "password_updated_at")) {
+  db.exec(`ALTER TABLE users ADD COLUMN password_updated_at INTEGER`);
+}
+db.exec(`CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id)`);
+
+db.exec(`
+  UPDATE change_logs
+  SET seq = rowid
+  WHERE seq IS NULL
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_change_logs_space_seq ON change_logs(space_id, seq);
+`);
 
 db.exec(`
   UPDATE change_logs
@@ -189,6 +315,22 @@ db.exec(`
     LIMIT 1
   )
   WHERE actor_nickname IS NULL AND profile_id IS NOT NULL
+`);
+
+db.exec(`
+  DROP TRIGGER IF EXISTS trg_change_logs_assign_seq;
+  CREATE TRIGGER IF NOT EXISTS trg_change_logs_assign_seq
+  AFTER INSERT ON change_logs
+  WHEN NEW.seq IS NULL
+  BEGIN
+    UPDATE change_logs
+    SET seq = (
+      SELECT COALESCE(MAX(seq), 0) + 1
+      FROM change_logs
+      WHERE rowid <> NEW.rowid
+    )
+    WHERE rowid = NEW.rowid;
+  END;
 `);
 
 function actorNicknameExpr(profileExpr: string, spaceExpr: string): string {
@@ -257,6 +399,32 @@ function preferLikeWinner(
 }
 
 normalizeLikesTable();
+
+function migrateLegacyMenuItemImages() {
+  const legacyRows = db.prepare(`
+    SELECT id, image_url
+    FROM menu_items
+    WHERE image_url IS NOT NULL
+  `).all() as Array<{ id: string; image_url: string | null }>;
+
+  const updateStmt = db.prepare("UPDATE menu_items SET image_url = ? WHERE id = ?");
+  const migrate = db.transaction((rows: Array<{ id: string; image_url: string | null }>) => {
+    for (const row of rows) {
+      if (!isDataUrlImage(row.image_url)) continue;
+      const { buffer, contentType } = parseDataUrlImage(row.image_url);
+      fs.writeFileSync(path.join(MENU_ITEM_IMAGE_DIR, `${row.id}.bin`), buffer);
+      fs.writeFileSync(
+        path.join(MENU_ITEM_IMAGE_DIR, `${row.id}.json`),
+        JSON.stringify({ contentType })
+      );
+      updateStmt.run(getMenuItemImagePublicUrl(row.id), row.id);
+    }
+  });
+
+  migrate(legacyRows);
+}
+
+migrateLegacyMenuItemImages();
 
 // Triggers for menu_items
 function createTrigger(table: string) {

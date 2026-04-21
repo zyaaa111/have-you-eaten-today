@@ -1,6 +1,7 @@
 import { db } from "./db";
 import type { MenuItem, Tag, ComboTemplate } from "./types";
-import { getLocalIdentity } from "./supabase";
+import { getLocalIdentity } from "./identity";
+import { scheduleProfileStateSync } from "./profile-state";
 
 export function getCurrentSpaceId(): string | undefined {
   return getLocalIdentity()?.space.id;
@@ -30,6 +31,77 @@ export function enrich<T extends { spaceId?: string; profileId?: string; syncSta
   } as T;
 }
 
+export async function detachSpaceData(spaceId: string): Promise<void> {
+  await db.transaction(
+    "rw",
+    [db.menuItems, db.tags, db.comboTemplates, db.likes, db.comments, db.pendingDeletions, db.tagMappings],
+    async () => {
+      await db.menuItems.toCollection().modify((item) => {
+        if (item.spaceId === spaceId) {
+          item.spaceId = undefined;
+          item.profileId = undefined;
+          item.syncStatus = "local";
+          item.version = 1;
+        }
+      });
+
+      await db.tags.toCollection().modify((item) => {
+        if (item.spaceId === spaceId) {
+          item.spaceId = undefined;
+          item.profileId = undefined;
+          item.syncStatus = "local";
+          item.version = 1;
+        }
+      });
+
+      await db.comboTemplates.toCollection().modify((item) => {
+        if (item.spaceId === spaceId) {
+          item.spaceId = undefined;
+          item.profileId = undefined;
+          item.syncStatus = "local";
+          item.version = 1;
+        }
+      });
+
+      await db.likes.where("spaceId").equals(spaceId).delete();
+      await db.comments.where("spaceId").equals(spaceId).delete();
+      await db.pendingDeletions.where("spaceId").equals(spaceId).delete();
+      await db.tagMappings.where("spaceId").equals(spaceId).delete();
+    }
+  );
+}
+
+export async function attachLocalDataToSpace(spaceId: string, profileId: string): Promise<void> {
+  await db.transaction("rw", [db.menuItems, db.tags, db.comboTemplates], async () => {
+    await db.menuItems.toCollection().modify((item) => {
+      if (!item.spaceId) {
+        item.spaceId = spaceId;
+        item.profileId = profileId;
+        item.syncStatus = "pending";
+        item.version = 1;
+      }
+    });
+
+    await db.tags.toCollection().modify((item) => {
+      if (!item.spaceId) {
+        item.spaceId = spaceId;
+        item.profileId = profileId;
+        item.syncStatus = "pending";
+        item.version = 1;
+      }
+    });
+
+    await db.comboTemplates.toCollection().modify((item) => {
+      if (!item.spaceId) {
+        item.spaceId = spaceId;
+        item.profileId = profileId;
+        item.syncStatus = "pending";
+        item.version = 1;
+      }
+    });
+  });
+}
+
 // Menu Items
 export async function createMenuItem(item: Omit<MenuItem, "id" | "spaceId" | "profileId" | "syncStatus" | "version"> & { id: string }): Promise<void> {
   await db.menuItems.add(enrich(item));
@@ -49,9 +121,16 @@ export async function updateMenuItem(id: string, changes: Partial<MenuItem>): Pr
 
 export async function deleteMenuItem(id: string): Promise<void> {
   const spaceId = getCurrentSpaceId();
-  await db.transaction("rw", [db.menuItems, db.personalWeights, db.likes, db.comments, db.pendingDeletions], async () => {
+  await db.transaction(
+    "rw",
+    [db.menuItems, db.personalWeights, db.avoidances, db.wishes, db.favorites, db.menuGroupItems, db.likes, db.comments, db.pendingDeletions],
+    async () => {
     await db.menuItems.delete(id);
     await db.personalWeights.where({ menuItemId: id }).delete();
+    await db.avoidances.where({ menuItemId: id }).delete();
+    await db.wishes.where({ menuItemId: id }).delete();
+    await db.favorites.where({ menuItemId: id }).delete();
+    await db.menuGroupItems.where({ menuItemId: id }).delete();
     await db.likes.where({ menuItemId: id }).delete();
     await db.comments.where({ menuItemId: id }).delete();
     if (spaceId) {
@@ -62,7 +141,9 @@ export async function deleteMenuItem(id: string): Promise<void> {
         createdAt: Date.now(),
       });
     }
-  });
+    }
+  );
+  scheduleProfileStateSync();
 }
 
 // Tags

@@ -42,6 +42,7 @@ CLAUDE.md
 # Testing
 coverage
 .nyc_output
+test-results
 
 # Vercel
 .vercel

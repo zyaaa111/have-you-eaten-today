@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pullTable, pushTable } from "@/lib/sync-api";
+import { requireSpaceMembership } from "@/lib/server-auth";
 
 const MAX_BATCH = 100;
 
 export async function GET(request: NextRequest) {
-  const spaceId = request.nextUrl.searchParams.get("space_id");
-  if (!spaceId) {
-    return NextResponse.json({ error: "缺少 space_id" }, { status: 400 });
-  }
-  return NextResponse.json(pullTable("likes", spaceId));
+  const auth = requireSpaceMembership(request, request.nextUrl.searchParams.get("space_id"));
+  if ("response" in auth) return auth.response;
+  return NextResponse.json(pullTable("likes", auth.membership.space.id));
 }
 
 export async function POST(request: NextRequest) {
@@ -24,7 +23,23 @@ export async function POST(request: NextRequest) {
   if (body.length > MAX_BATCH) {
     return NextResponse.json({ error: `批量上限 ${MAX_BATCH}` }, { status: 400 });
   }
+  if (body.length === 0) {
+    return NextResponse.json({ success: true, count: 0 });
+  }
   const items = body as Record<string, unknown>[];
-  pushTable("likes", items);
-  return NextResponse.json({ success: true, count: items.length });
+  const requestedSpaceId =
+    typeof items[0]?.space_id === "string"
+      ? (items[0]?.space_id as string)
+      : typeof items[0]?.spaceId === "string"
+        ? (items[0]?.spaceId as string)
+        : null;
+  const auth = requireSpaceMembership(request, requestedSpaceId);
+  if ("response" in auth) return auth.response;
+  const normalizedItems = items.map((item) => ({
+    ...item,
+    space_id: auth.membership.space.id,
+    profile_id: auth.membership.profile.id,
+  }));
+  pushTable("likes", normalizedItems);
+  return NextResponse.json({ success: true, count: normalizedItems.length });
 }

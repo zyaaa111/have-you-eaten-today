@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
 import Link from "next/link";
 import { useEffect } from "react";
+import { useAuth } from "@/components/auth-provider";
 
 const typeLabels: Record<TagType, string> = {
   cuisine: "菜系",
@@ -44,6 +45,7 @@ function formatRuleSummary(rule: ComboRule, tagMap: Map<string, Tag>): string {
 }
 
 export default function TemplatesPage() {
+  const { user } = useAuth();
   const templates = useLiveQuery(() => db.comboTemplates.toArray(), []) || [];
   const allTags = useLiveQuery(() => db.tags.toArray(), []) || [];
 
@@ -100,12 +102,10 @@ export default function TemplatesPage() {
       }
     };
 
-    const sub = syncEngine.subscribeToChanges(() => {
-      void pullChangesSafely();
-    });
+    const sub = syncEngine.subscribeToChanges(pullChangesSafely);
     void pullChangesSafely();
     return () => sub.unsubscribe();
-  }, []);
+  }, [user?.id]);
 
   return (
     <div className="space-y-6">

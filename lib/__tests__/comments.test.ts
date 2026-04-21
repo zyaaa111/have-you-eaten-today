@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { resetDatabase } from "../db";
-import { saveLocalIdentity } from "../supabase";
+import { saveLocalIdentity } from "../identity";
 import type { Space, Profile } from "../types";
-import { addComment, deleteComment, getCommentsByMenuItem, getCommentsCountByMenuItems } from "../comments";
+import { addComment, deleteComment, updateComment, getCommentsByMenuItem, getCommentsCountByMenuItems } from "../comments";
 
 const testSpace: Space = {
   id: "space_comment_test",
@@ -100,5 +100,43 @@ describe("comments", () => {
     localStorage.removeItem("hyet_profile_v1");
     localStorage.removeItem("hyet_space_v1");
     await expect(addComment("item1", "test", false)).rejects.toThrow("请先加入或创建空间");
+  });
+
+  describe("updateComment", () => {
+    it("should update own comment content", async () => {
+      const comment = await addComment("item1", "原始内容", false);
+      await updateComment(comment.id, "更新后的内容");
+      const comments = await getCommentsByMenuItem("item1");
+      expect(comments[0].content).toBe("更新后的内容");
+      expect(comments[0].updatedAt).toBeDefined();
+      expect(comments[0].syncStatus).toBe("pending");
+      expect(comments[0].version).toBe((comment.version ?? 1) + 1);
+    });
+
+    it("should reject empty content", async () => {
+      const comment = await addComment("item1", "内容", false);
+      await expect(updateComment(comment.id, "   ")).rejects.toThrow("评论内容不能为空");
+    });
+
+    it("should reject content exceeding max length", async () => {
+      const comment = await addComment("item1", "内容", false);
+      await expect(updateComment(comment.id, "a".repeat(2001))).rejects.toThrow("2000");
+    });
+
+    it("should reject editing another user's comment", async () => {
+      const comment = await addComment("item1", "别人的评论", false);
+      const otherProfile: Profile = {
+        id: "profile_other",
+        spaceId: testSpace.id,
+        nickname: "其他用户",
+        joinedAt: Date.now(),
+      };
+      saveLocalIdentity({ space: testSpace, profile: otherProfile });
+      await expect(updateComment(comment.id, "试图修改")).rejects.toThrow("只能编辑自己的评论");
+    });
+
+    it("should reject editing nonexistent comment", async () => {
+      await expect(updateComment("nonexistent-id", "内容")).rejects.toThrow("评论不存在");
+    });
   });
 });

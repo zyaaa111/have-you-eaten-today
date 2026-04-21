@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { getLocalIdentity } from "./identity";
 import { Tag, MenuItem, ComboTemplate } from "./types";
 
 const defaultTags: Omit<Tag, "id" | "createdAt">[] = [
@@ -68,6 +69,9 @@ function makeTemplateId(name: string) {
 }
 
 export async function seedDatabase() {
+  if (getLocalIdentity()) {
+    return;
+  }
   const tagCount = await db.tags.count();
   if (tagCount === 0) {
     const tagsToAdd: Tag[] = defaultTags.map((t) => ({

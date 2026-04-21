@@ -36,7 +36,6 @@ export interface MenuItem {
   // sync / multi-user
   spaceId?: string;
   profileId?: string;
-  remoteId?: string;
   syncStatus?: SyncStatus;
   version?: number;
 }
@@ -53,7 +52,6 @@ export interface Tag {
   // sync / multi-user
   spaceId?: string;
   profileId?: string;
-  remoteId?: string;
   syncStatus?: SyncStatus;
   version?: number;
 }
@@ -91,7 +89,6 @@ export interface ComboTemplate {
   // sync / multi-user
   spaceId?: string;
   profileId?: string;
-  remoteId?: string;
   syncStatus?: SyncStatus;
   version?: number;
 }
@@ -113,14 +110,35 @@ export interface Space {
 export interface Profile {
   id: string;
   spaceId: string;
+  userId?: string;
   nickname: string;
   joinedAt: number;
+  isAccountBound?: boolean;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  createdAt: number;
+  hasPassword?: boolean;
+}
+
+export interface ProfileMembership {
+  profile: Profile;
+  space: Space;
+}
+
+export interface AuthSession {
+  user: User | null;
+  profiles: ProfileMembership[];
+  passwordResetConfigured?: boolean;
 }
 
 export type ChangeLogOperation = "create" | "update" | "delete";
 
 export interface ChangeLog {
   id: string;
+  seq?: number;
   spaceId: string;
   profileId: string;
   actorNickname?: string | null;
@@ -130,6 +148,17 @@ export interface ChangeLog {
   beforeSnapshot?: Record<string, unknown> | null;
   afterSnapshot?: Record<string, unknown> | null;
   version: number;
+  createdAt: number;
+}
+
+export interface SyncConflict {
+  id: string;
+  spaceId: string;
+  tableName: ChangeLog["tableName"];
+  recordId: string;
+  localSnapshot: Record<string, unknown> | null;
+  remoteSnapshot: Record<string, unknown> | null;
+  seq: number;
   createdAt: number;
 }
 
@@ -161,6 +190,73 @@ export interface PersonalWeight {
   id?: number;
   menuItemId: string;
   weight: number;
+  scope?: "local" | "profile";
+  profileId?: string;
+  spaceId?: string;
+  updatedAt?: number;
+}
+
+export interface MenuGroup {
+  id: string;
+  name: string;
+  scope: "local" | "profile";
+  profileId?: string;
+  spaceId?: string;
+  createdAt: number;
+  updatedAt: number;
+  sortOrder: number;
+}
+
+export interface MenuGroupItem {
+  id?: number;
+  groupId: string;
+  menuItemId: string;
+  profileId?: string;
+  spaceId?: string;
+  createdAt: number;
+  sortOrder: number;
+  updatedAt?: number;
+}
+
+export interface AppSettingRecord {
+  key: string;
+  value: unknown;
+}
+
+export interface AvoidanceRecord {
+  id?: number;
+  menuItemId: string;
+  scope?: "local" | "profile";
+  profileId?: string;
+  spaceId?: string;
+  updatedAt?: number;
+}
+
+export interface WishRecord {
+  id?: number;
+  menuItemId: string;
+  scope?: "local" | "profile";
+  profileId?: string;
+  spaceId?: string;
+  updatedAt?: number;
+}
+
+export interface FavoriteRecord {
+  id?: number;
+  menuItemId: string;
+  scope?: "local" | "profile";
+  profileId?: string;
+  spaceId?: string;
+  updatedAt?: number;
+}
+
+export interface ProfileStateExport {
+  avoidances: AvoidanceRecord[];
+  wishes: WishRecord[];
+  favorites: FavoriteRecord[];
+  personalWeights: PersonalWeight[];
+  menuGroups: MenuGroup[];
+  menuGroupItems: MenuGroupItem[];
 }
 
 export interface AppExport {
@@ -168,10 +264,17 @@ export interface AppExport {
   exportedAt: number;
   appVersion: string;
   data: {
+    settings: AppSettingRecord[];
+    avoidances: AvoidanceRecord[];
+    wishes?: WishRecord[];
+    favorites?: FavoriteRecord[];
     tags: Tag[];
     menuItems: MenuItem[];
     comboTemplates: ComboTemplate[];
     rollHistory: RollHistory[];
-    personalWeights?: PersonalWeight[];
+    personalWeights: PersonalWeight[];
+    menuGroups?: MenuGroup[];
+    menuGroupItems?: MenuGroupItem[];
+    imageFiles?: Record<string, string>;
   };
 }

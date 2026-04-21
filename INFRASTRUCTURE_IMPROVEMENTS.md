@@ -120,7 +120,8 @@ Vitest 测试 stderr 中多次出现 Dexie 警告：
 - 即使测试失败也会保留报告（`if: always()`）
 
 **Action runtime**：
-- 使用 `actions/checkout@v5`、`actions/setup-node@v5`、`actions/upload-artifact@v5`，避免 Node.js 20 action runtime 弃用警告
+- 使用 `actions/checkout@v5`、`actions/setup-node@v5`、`actions/upload-artifact@v5`
+- 设置 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`，显式启用 Node.js 24 action runtime，避免 Node.js 20 action runtime 弃用警告
 
 ### 2.2 Vitest 覆盖率报告与阈值检查
 

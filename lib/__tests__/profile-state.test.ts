@@ -173,6 +173,56 @@ describe("profile-state sync", () => {
     expect(pushedStates[0]?.wishes.map((item) => item.menuItemId)).toEqual(["kept-wish"]);
   });
 
+  it("keeps a local parent group when a dirty group item is pulled before remote has the group", async () => {
+    const now = Date.now();
+    await db.menuGroups.add({
+      id: "new-group",
+      name: "新场景",
+      scope: "profile",
+      profileId: testProfile.id,
+      spaceId: testSpace.id,
+      createdAt: now,
+      updatedAt: now,
+      sortOrder: 0,
+    });
+    await db.menuGroupItems.add({
+      groupId: "new-group",
+      menuItemId: "menu-1",
+      profileId: testProfile.id,
+      spaceId: testSpace.id,
+      createdAt: now,
+      updatedAt: now,
+      sortOrder: 0,
+    });
+    await markDirty({
+      at: now,
+      changes: { menuGroupItems: ["new-group:menu-1"] },
+      resets: [],
+    });
+
+    const pushedStates: ProfileStateExport[] = [];
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string, options?: RequestInit) => {
+      if ((options?.method ?? "GET") === "PUT") {
+        pushedStates.push(JSON.parse(String(options?.body)).state as ProfileStateExport);
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true }) } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => emptyState(),
+      } as Response);
+    });
+
+    await pullCurrentProfileState();
+
+    expect(await db.menuGroups.get("new-group")).toBeDefined();
+    expect(await db.menuGroupItems.where("[groupId+menuItemId]").equals(["new-group", "menu-1"]).first()).toBeDefined();
+    expect(pushedStates[0]?.menuGroups.map((group) => group.id)).toEqual(["new-group"]);
+    expect(pushedStates[0]?.menuGroupItems.map((item) => `${item.groupId}:${item.menuItemId}`)).toEqual([
+      "new-group:menu-1",
+    ]);
+  });
+
   it("propagates collection resets such as clearing roll history", async () => {
     await markDirty({
       at: Date.now(),

@@ -59,13 +59,19 @@ export async function addMenuItemToGroup(groupId: string, menuItemId: string): P
   };
   await db.menuGroupItems.add(item);
   await db.menuGroups.update(groupId, { updatedAt: Date.now() });
-  scheduleProfileStateSync({ collection: "menuGroupItems", key: `${groupId}:${menuItemId}` });
+  scheduleProfileStateSync([
+    { collection: "menuGroups", key: groupId },
+    { collection: "menuGroupItems", key: `${groupId}:${menuItemId}` },
+  ]);
 }
 
 export async function removeMenuItemFromGroup(groupId: string, menuItemId: string): Promise<void> {
   await db.menuGroupItems.where("[groupId+menuItemId]").equals([groupId, menuItemId]).delete();
   await db.menuGroups.update(groupId, { updatedAt: Date.now() });
-  scheduleProfileStateSync({ collection: "menuGroupItems", key: `${groupId}:${menuItemId}` });
+  scheduleProfileStateSync([
+    { collection: "menuGroups", key: groupId },
+    { collection: "menuGroupItems", key: `${groupId}:${menuItemId}` },
+  ]);
 }
 
 export async function moveMenuGroupItem(groupId: string, menuItemId: string, direction: -1 | 1): Promise<void> {
@@ -84,6 +90,7 @@ export async function moveMenuGroupItem(groupId: string, menuItemId: string, dir
     }
   });
   scheduleProfileStateSync([
+    { collection: "menuGroups", key: groupId },
     { collection: "menuGroupItems", key: `${groupId}:${current.menuItemId}` },
     { collection: "menuGroupItems", key: `${groupId}:${target.menuItemId}` },
   ]);

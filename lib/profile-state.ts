@@ -16,6 +16,7 @@ import type {
 } from "./types";
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
+let dirtyWriteQueue: Promise<void> = Promise.resolve();
 const PROFILE_STATE_DIRTY_KEY = "__profileStateDirtyAt";
 const PROFILE_STATE_DIRTY_CHANGES_KEY = "__profileStateDirtyChanges";
 
@@ -177,7 +178,7 @@ export async function getCurrentProfileState(): Promise<ProfileStateExport> {
     favorites: favorites.filter((item) => isRecordInScope(item, scope)),
     personalWeights: personalWeights.filter((item) => isRecordInScope(item, scope)),
     menuGroups: menuGroups.filter((item) => isRecordInScope(item, scope)),
-    menuGroupItems: menuGroupItems.filter((item) => isRecordInScope(item, scope)),
+    menuGroupItems: menuGroupItems.filter((item) => item.profileId === scope.profileId && item.spaceId === scope.spaceId),
     rollHistory,
   };
 }
@@ -187,6 +188,7 @@ export async function pullCurrentProfileState(): Promise<void> {
   if (scope.scope !== "profile" || !scope.profileId || !scope.spaceId || !getLocalSessionUser()) {
     return;
   }
+  await waitForPendingDirtyWrites();
 
   const remoteSnapshot = await profileFetch<ProfileStateExport>(
     `/sync/profile-state?profile_id=${encodeURIComponent(scope.profileId)}&space_id=${encodeURIComponent(scope.spaceId)}`
@@ -217,6 +219,7 @@ export async function pushCurrentProfileState(): Promise<void> {
   if (scope.scope !== "profile" || !scope.profileId || !scope.spaceId || !getLocalSessionUser()) {
     return;
   }
+  await waitForPendingDirtyWrites();
 
   const state = await getCurrentProfileState();
   await profileFetch<{ success: boolean }>("/sync/profile-state", {
@@ -263,16 +266,39 @@ export function scheduleProfileStateSync(
   }
   const changes = typeof changeOrDelay === "number" ? undefined : changeOrDelay;
   const nextDelay = typeof changeOrDelay === "number" ? changeOrDelay : delay;
-  void markProfileStateDirty(changes);
+  void queueProfileStateDirty(changes).catch((error) => {
+    console.error("Profile state dirty marker failed:", error);
+  });
   if (syncTimer) {
     clearTimeout(syncTimer);
   }
   syncTimer = setTimeout(() => {
     syncTimer = null;
-    void pushCurrentProfileState().catch((error) => {
-      console.error("Profile state sync failed:", error);
-    });
+    void (async () => {
+      try {
+        await waitForPendingDirtyWrites();
+        await pushCurrentProfileState();
+      } catch (error) {
+        console.error("Profile state sync failed:", error);
+      }
+    })();
   }, nextDelay);
+}
+
+function queueProfileStateDirty(changes?: ProfileStateDirtyChange | ProfileStateDirtyChange[]): Promise<void> {
+  dirtyWriteQueue = dirtyWriteQueue
+    .catch(() => undefined)
+    .then(() => markProfileStateDirty(changes));
+  return dirtyWriteQueue;
+}
+
+async function waitForPendingDirtyWrites(): Promise<void> {
+  try {
+    await dirtyWriteQueue;
+  } catch {
+    // The original error is logged at the scheduling site. Do not let a failed
+    // dirty-marker write permanently block manual sync or pull recovery.
+  }
 }
 
 async function markProfileStateDirty(changes?: ProfileStateDirtyChange | ProfileStateDirtyChange[]): Promise<void> {
@@ -416,12 +442,16 @@ function mergeProfileState(
     return mergeFullProfileState(local, remote);
   }
 
-  const menuGroups = mergeDirtyCollection<MenuGroup>(
+  const menuGroups = includeDirtyGroupItemParents(
+    mergeDirtyCollection<MenuGroup>(
+      local.menuGroups,
+      remote.menuGroups,
+      (item) => item.id,
+      dirty,
+      "menuGroups"
+    ),
     local.menuGroups,
-    remote.menuGroups,
-    (item) => item.id,
-    dirty,
-    "menuGroups"
+    dirty
   ).sort((a, b) => a.sortOrder - b.sortOrder);
   const groupIds = new Set(menuGroups.map((group) => group.id));
 
@@ -522,6 +552,29 @@ function mergeDirtyCollection<T>(
     }
   }
   return Array.from(merged.values());
+}
+
+function includeDirtyGroupItemParents(
+  mergedGroups: MenuGroup[],
+  localGroups: MenuGroup[],
+  dirty: ProfileStateDirtyState
+): MenuGroup[] {
+  const dirtyGroupIds = new Set(
+    (dirty.changes.menuGroupItems ?? [])
+      .map((key) => key.split(":")[0])
+      .filter((groupId) => !!groupId)
+  );
+  if (dirtyGroupIds.size === 0) {
+    return mergedGroups;
+  }
+
+  const groupsById = new Map(mergedGroups.map((group) => [group.id, group]));
+  for (const group of localGroups) {
+    if (dirtyGroupIds.has(group.id)) {
+      groupsById.set(group.id, group);
+    }
+  }
+  return Array.from(groupsById.values());
 }
 
 function isDirtyState(value: unknown): value is ProfileStateDirtyState {

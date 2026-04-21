@@ -6,6 +6,13 @@ import { getLocalIdentity } from "./identity";
 
 const COMMENT_UNDO_WINDOW_MS = 30_000;
 const recentlyDeletedComments = new Map<string, { comment: Comment; expiresAt: number }>();
+let lastCommentCreatedAt = 0;
+
+function nextCommentCreatedAt(): number {
+  const now = Date.now();
+  lastCommentCreatedAt = Math.max(now, lastCommentCreatedAt + 1);
+  return lastCommentCreatedAt;
+}
 
 export async function getCommentsByMenuItem(menuItemId: string): Promise<Comment[]> {
   return db.comments
@@ -57,7 +64,7 @@ export async function addComment(menuItemId: string, content: string, isAnonymou
       nickname,
       content,
       isAnonymous,
-      createdAt: Date.now(),
+      createdAt: nextCommentCreatedAt(),
       updatedAt: undefined,
     },
     { syncStatus: "pending" }

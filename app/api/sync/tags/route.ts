@@ -9,7 +9,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const items = (await request.json()) as Record<string, unknown>[];
+  let items: unknown;
+  try {
+    items = await request.json();
+  } catch {
+    return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
+  }
   if (!Array.isArray(items)) {
     return NextResponse.json({ error: "请求体必须是数组" }, { status: 400 });
   }
@@ -25,7 +30,7 @@ export async function POST(request: NextRequest) {
   const auth = requireSpaceMembership(request, requestedSpaceId);
   if ("response" in auth) return auth.response;
 
-  const normalizedItems = items.map((item) => ({
+  const normalizedItems = (items as Record<string, unknown>[]).map((item) => ({
     ...item,
     space_id: auth.membership.space.id,
     profile_id: auth.membership.profile.id,

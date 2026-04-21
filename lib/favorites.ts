@@ -17,7 +17,7 @@ export async function toggleFavoriteId(menuItemId: string): Promise<boolean> {
     .first();
   if (existing?.id !== undefined) {
     await db.favorites.delete(existing.id);
-    scheduleProfileStateSync();
+    scheduleProfileStateSync({ collection: "favorites", key: menuItemId });
     return false;
   }
 
@@ -27,7 +27,7 @@ export async function toggleFavoriteId(menuItemId: string): Promise<boolean> {
       updatedAt: Date.now(),
     })
   );
-  scheduleProfileStateSync();
+  scheduleProfileStateSync({ collection: "favorites", key: menuItemId });
   return true;
 }
 

@@ -8,6 +8,7 @@ import { rollSingle, rollCombo, type RollResult } from "@/lib/roll";
 import { getDefaultDedupDays, getDedupEnabled } from "@/lib/settings";
 import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
 import { getRecommendations, type RecommendationItem } from "@/lib/recommendations";
+import { scheduleProfileStateSync } from "@/lib/profile-state";
 import { MenuItemFormDialog } from "@/components/menu-item-form-dialog";
 import { ChefHat, Bike, Dices, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ import { getLocalIdentity } from "@/lib/identity";
 import { useAuth } from "@/components/auth-provider";
 import { syncEngine } from "@/lib/sync-engine";
 import { buildApiUrl } from "@/lib/api-base";
+import { SETTINGS_CHANGED_EVENT } from "@/lib/syncable-settings";
 
 const typeLabels: Record<TagType, string> = {
   cuisine: "菜系",
@@ -107,8 +109,18 @@ export default function RandomPage() {
   const recommendations = identity && user && selectedMemberIds.length > 1 ? sharedRecommendations : localRecommendations;
 
   useEffect(() => {
-    getDefaultDedupDays().then(setDedupDays);
-    getDedupEnabled().then(setDedupEnabled);
+    let active = true;
+    const loadRollSettings = () => {
+      void getDefaultDedupDays().then((days) => {
+        if (active) setDedupDays(days);
+      });
+      void getDedupEnabled().then((enabled) => {
+        if (active) setDedupEnabled(enabled);
+      });
+    };
+
+    loadRollSettings();
+    window.addEventListener(SETTINGS_CHANGED_EVENT, loadRollSettings);
 
     const localIdentity = getLocalIdentity();
     setIdentity(localIdentity);
@@ -116,6 +128,10 @@ export default function RandomPage() {
       setSelectedMemberIds([localIdentity.profile.id]);
       void syncEngine.fetchProfiles(localIdentity.space.id).then(setMembers).catch(() => setMembers([]));
     }
+    return () => {
+      active = false;
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, loadRollSettings);
+    };
   }, [user?.id]);
 
   useEffect(() => {
@@ -285,13 +301,15 @@ export default function RandomPage() {
           throw new Error(`HTTP ${response.status}`);
         }
         nextResult = (await response.json()) as RollResult;
+        const historyId = crypto.randomUUID();
         await db.rollHistory.add({
-          id: crypto.randomUUID(),
+          id: historyId,
           rolledAt: Date.now(),
           items: nextResult.items,
           ruleSnapshot: nextResult.ruleSnapshot,
           ignoredDedup: nextResult.ignoredDedup,
         });
+        scheduleProfileStateSync({ collection: "rollHistory", key: historyId });
       } else if (rollMode === "single") {
         nextResult = await rollSingle({
           kind: kind === "all" ? undefined : kind,

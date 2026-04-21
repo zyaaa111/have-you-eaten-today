@@ -8,7 +8,7 @@ export async function registerWithEmail(page: Page, email: string, password: str
   await page.getByPlaceholder("再次输入密码").fill(password);
   await page.getByRole("button", { name: "注册并继续" }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 }
 
 export async function loginWithPassword(page: Page, email: string, password: string, redirectTo = "/settings") {
@@ -18,7 +18,7 @@ export async function loginWithPassword(page: Page, email: string, password: str
   await page.getByPlaceholder("至少 8 位，包含字母和数字").first().fill(password);
   await page.getByRole("button", { name: "登录并继续" }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 }
 
 export async function requestPasswordReset(page: Page, email: string): Promise<string> {
@@ -49,9 +49,14 @@ export async function resetPassword(page: Page, email: string, token: string, ne
 
 export async function createSpace(page: Page, nickname: string, spaceName: string) {
   await page.goto("/join");
-  await page.getByRole("button", { name: "创建空间" }).first().click();
+  await page.getByRole("heading", { name: "加入共享菜单" }).waitFor();
+  const spaceNameInput = page.getByPlaceholder("如：咱们宿舍的菜单");
+  for (let attempt = 0; attempt < 3 && !(await spaceNameInput.isVisible().catch(() => false)); attempt++) {
+    await page.getByRole("button", { name: "创建空间" }).first().click();
+    await spaceNameInput.waitFor({ state: "visible", timeout: 1000 }).catch(() => undefined);
+  }
   await page.getByPlaceholder("如：小厨神").fill(nickname);
-  await page.getByPlaceholder("如：咱们宿舍的菜单").fill(spaceName);
+  await spaceNameInput.fill(spaceName);
   await page.locator("form").getByRole("button", { name: "创建空间" }).click();
   await page.waitForURL("**/menu");
 }

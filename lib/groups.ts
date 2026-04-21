@@ -18,7 +18,7 @@ export async function createMenuGroup(name: string): Promise<MenuGroup> {
     sortOrder: existingCount,
   };
   await db.menuGroups.add(group);
-  scheduleProfileStateSync();
+  scheduleProfileStateSync({ collection: "menuGroups", key: group.id });
   return group;
 }
 
@@ -27,15 +27,19 @@ export async function renameMenuGroup(groupId: string, name: string): Promise<vo
     name: name.trim(),
     updatedAt: Date.now(),
   });
-  scheduleProfileStateSync();
+  scheduleProfileStateSync({ collection: "menuGroups", key: groupId });
 }
 
 export async function deleteMenuGroup(groupId: string): Promise<void> {
+  const items = await db.menuGroupItems.where("groupId").equals(groupId).toArray();
   await db.transaction("rw", [db.menuGroups, db.menuGroupItems], async () => {
     await db.menuGroupItems.where("groupId").equals(groupId).delete();
     await db.menuGroups.delete(groupId);
   });
-  scheduleProfileStateSync();
+  scheduleProfileStateSync([
+    { collection: "menuGroups", key: groupId },
+    ...items.map((item) => ({ collection: "menuGroupItems" as const, key: `${item.groupId}:${item.menuItemId}` })),
+  ]);
 }
 
 export async function addMenuItemToGroup(groupId: string, menuItemId: string): Promise<void> {
@@ -55,13 +59,13 @@ export async function addMenuItemToGroup(groupId: string, menuItemId: string): P
   };
   await db.menuGroupItems.add(item);
   await db.menuGroups.update(groupId, { updatedAt: Date.now() });
-  scheduleProfileStateSync();
+  scheduleProfileStateSync({ collection: "menuGroupItems", key: `${groupId}:${menuItemId}` });
 }
 
 export async function removeMenuItemFromGroup(groupId: string, menuItemId: string): Promise<void> {
   await db.menuGroupItems.where("[groupId+menuItemId]").equals([groupId, menuItemId]).delete();
   await db.menuGroups.update(groupId, { updatedAt: Date.now() });
-  scheduleProfileStateSync();
+  scheduleProfileStateSync({ collection: "menuGroupItems", key: `${groupId}:${menuItemId}` });
 }
 
 export async function moveMenuGroupItem(groupId: string, menuItemId: string, direction: -1 | 1): Promise<void> {
@@ -79,5 +83,8 @@ export async function moveMenuGroupItem(groupId: string, menuItemId: string, dir
       await db.menuGroupItems.update(target.id, { sortOrder: current.sortOrder, updatedAt: Date.now() });
     }
   });
-  scheduleProfileStateSync();
+  scheduleProfileStateSync([
+    { collection: "menuGroupItems", key: `${groupId}:${current.menuItemId}` },
+    { collection: "menuGroupItems", key: `${groupId}:${target.menuItemId}` },
+  ]);
 }

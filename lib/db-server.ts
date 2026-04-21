@@ -172,6 +172,16 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_profile_favorites_space ON profile_favorites(space_id, profile_id);
 
+  CREATE TABLE IF NOT EXISTS profile_settings (
+    profile_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, space_id, key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_settings_profile ON profile_settings(profile_id, space_id);
+
   CREATE TABLE IF NOT EXISTS profile_groups (
     id TEXT PRIMARY KEY,
     profile_id TEXT NOT NULL,
@@ -194,6 +204,17 @@ db.exec(`
     UNIQUE(group_id, menu_item_id)
   );
   CREATE INDEX IF NOT EXISTS idx_profile_group_items_profile ON profile_group_items(profile_id, group_id);
+
+  CREATE TABLE IF NOT EXISTS profile_roll_history (
+    id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    rolled_at INTEGER NOT NULL,
+    items TEXT NOT NULL DEFAULT '[]',
+    rule_snapshot TEXT NOT NULL,
+    ignored_dedup INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_roll_history_profile ON profile_roll_history(profile_id, rolled_at);
 
   CREATE INDEX IF NOT EXISTS idx_change_logs_space ON change_logs(space_id);
   CREATE INDEX IF NOT EXISTS idx_change_logs_record ON change_logs(table_name, record_id);

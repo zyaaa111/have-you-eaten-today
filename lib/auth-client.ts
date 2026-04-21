@@ -118,7 +118,7 @@ function persistSessionSideEffects(session: AuthSession): void {
     return;
   }
 
-  if (!localIdentity && session.profiles.length === 1) {
+  if (session.profiles.length === 1) {
     saveMembershipAsLocalIdentity(session.profiles[0]!);
   }
 }

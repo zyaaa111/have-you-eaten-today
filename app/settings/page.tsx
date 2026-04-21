@@ -11,7 +11,8 @@ import type { AppSettings, SyncConflict } from "@/lib/types";
 import { getLocalIdentity, clearLocalIdentity } from "@/lib/identity";
 import { syncEngine } from "@/lib/sync-engine";
 import { detachSpaceData } from "@/lib/space-ops";
-import { clearCurrentProfileState } from "@/lib/profile-state";
+import { clearCurrentProfileState, pullCurrentProfileState, pushCurrentProfileState } from "@/lib/profile-state";
+import { SETTINGS_CHANGED_EVENT } from "@/lib/syncable-settings";
 import { useRouter } from "next/navigation";
 import type { Profile } from "@/lib/types";
 import { db } from "@/lib/db";
@@ -49,18 +50,25 @@ export default function SettingsPage() {
   ) ?? [];
 
   useEffect(() => {
-    Promise.all([
-      getDefaultDedupDays(),
-      getDedupEnabled(),
-      getSetting<number | null>("lastBackupAt", null),
-      getTheme(),
-    ]).then(([days, enabled, backup, t]) => {
-      setDedupDays(days);
-      setDedupEnabled(enabled);
-      setLastBackupAt(backup);
-      setTheme(t);
-      setLoadingSettings(false);
-    });
+    let active = true;
+    const loadSettings = () => {
+      void Promise.all([
+        getDefaultDedupDays(),
+        getDedupEnabled(),
+        getSetting<number | null>("lastBackupAt", null),
+        getTheme(),
+      ]).then(([days, enabled, backup, t]) => {
+        if (!active) return;
+        setDedupDays(days);
+        setDedupEnabled(enabled);
+        setLastBackupAt(backup);
+        setTheme(t);
+        setLoadingSettings(false);
+      });
+    };
+
+    loadSettings();
+    window.addEventListener(SETTINGS_CHANGED_EVENT, loadSettings);
     const localIdentity = getLocalIdentity();
     setIdentity(localIdentity);
     syncEngine.getSyncStatus().then((s) => {
@@ -77,7 +85,11 @@ export default function SettingsPage() {
         setPendingCount(s.pendingCount);
       });
     }, 1500);
-    return () => clearInterval(timer);
+    return () => {
+      active = false;
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, loadSettings);
+      clearInterval(timer);
+    };
   }, [user?.id]);
 
   const handleDedupDaysChange = async (value: number) => {
@@ -172,6 +184,8 @@ export default function SettingsPage() {
     const pushResult = await syncEngine.pushChanges();
     if (pushResult.success) {
       await syncEngine.pullChanges();
+      await pushCurrentProfileState();
+      await pullCurrentProfileState();
       setMessage("同步成功");
     } else {
       setMessage(`同步遇到问题：${pushResult.error || "未知错误"}`);

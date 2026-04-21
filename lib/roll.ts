@@ -5,6 +5,7 @@ import { getDefaultDedupDays, getDedupEnabled } from "./settings";
 import { getWishIds } from "./wishlist";
 import { getAvoidedIds } from "./avoidances";
 import { getWeightsMap } from "./weights";
+import { scheduleProfileStateSync } from "./profile-state";
 
 export interface SingleRollOptions {
   kind?: MenuItemKind;
@@ -116,13 +117,15 @@ export async function rollSingle(opts: SingleRollOptions): Promise<RollResult | 
     ignoredDedup,
   };
 
+  const historyId = uuidv4();
   await db.rollHistory.add({
-    id: uuidv4(),
+    id: historyId,
     rolledAt: Date.now(),
     items: result.items,
     ruleSnapshot: result.ruleSnapshot,
     ignoredDedup: result.ignoredDedup,
   });
+  scheduleProfileStateSync({ collection: "rollHistory", key: historyId });
 
   return result;
 }
@@ -192,13 +195,15 @@ export async function rollCombo(opts: ComboRollOptions): Promise<RollResult | nu
     ignoredDedup,
   };
 
+  const historyId = uuidv4();
   await db.rollHistory.add({
-    id: uuidv4(),
+    id: historyId,
     rolledAt: Date.now(),
     items: result.items,
     ruleSnapshot: result.ruleSnapshot,
     ignoredDedup: result.ignoredDedup,
   });
+  scheduleProfileStateSync({ collection: "rollHistory", key: historyId });
 
   return result;
 }
@@ -209,4 +214,5 @@ export async function getRollHistory(limit = 200): Promise<ReturnType<typeof db.
 
 export async function clearRollHistory(): Promise<void> {
   await db.rollHistory.clear();
+  scheduleProfileStateSync({ collection: "rollHistory", reset: true });
 }

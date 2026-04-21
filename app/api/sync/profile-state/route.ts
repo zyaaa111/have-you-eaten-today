@@ -29,11 +29,16 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }
 
-  const body = (await request.json()) as {
+  let body: {
     profile_id?: string;
     space_id?: string;
     state?: ProfileStateExport;
   };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
+  }
   const profileId = typeof body.profile_id === "string" ? body.profile_id : "";
   const spaceId = typeof body.space_id === "string" ? body.space_id : "";
   if (!profileId || !spaceId || !body.state) {

@@ -4,28 +4,45 @@ import { useEffect } from "react";
 import { seedDatabase } from "@/lib/seed";
 import { migrateLegacyClientImages } from "@/lib/menu-item-images";
 import { migrateLegacyPrivateState, pullCurrentProfileState } from "@/lib/profile-state";
+import { syncEngine } from "@/lib/sync-engine";
+import { getLocalIdentity } from "@/lib/identity";
 import { MobileNav } from "./mobile-nav";
 import { DesktopNav } from "./desktop-nav";
 import { useAuth } from "@/components/auth-provider";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, profiles, loading } = useAuth();
+  const profileKey = profiles.map((membership) => membership.profile.id).join(",");
 
   useEffect(() => {
+    if (loading) return;
     seedDatabase()
       .then(() => migrateLegacyPrivateState())
       .then(() => migrateLegacyClientImages())
       .catch(console.error);
-  }, []);
+  }, [loading, user?.id, profileKey]);
 
   useEffect(() => {
     if (!user) return;
-    void pullCurrentProfileState().catch(console.error);
+    let running = false;
+    const syncAccountState = async () => {
+      if (running) return;
+      const identity = getLocalIdentity();
+      if (!identity) return;
+      running = true;
+      try {
+        await syncEngine.syncChanges();
+        await pullCurrentProfileState();
+      } finally {
+        running = false;
+      }
+    };
+    void syncAccountState().catch(console.error);
     const timer = setInterval(() => {
-      void pullCurrentProfileState().catch(console.error);
-    }, 10_000);
+      void syncAccountState().catch(console.error);
+    }, 3_000);
     return () => clearInterval(timer);
-  }, [user?.id]);
+  }, [user?.id, profileKey]);
 
   return (
     <div className="min-h-screen bg-background flex">

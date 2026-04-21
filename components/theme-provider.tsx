@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getTheme, saveSetting } from "@/lib/settings";
+import { SETTINGS_CHANGED_EVENT } from "@/lib/syncable-settings";
 import type { AppSettings } from "@/lib/types";
 
 type Theme = AppSettings["theme"];
@@ -43,10 +44,12 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       setMounted(true);
     };
 
-    applyTheme();
+    void applyTheme();
+    window.addEventListener(SETTINGS_CHANGED_EVENT, applyTheme);
 
     return () => {
       cancelled = true;
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, applyTheme);
     };
   }, []);
 
@@ -58,10 +61,18 @@ export function useTheme() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    getTheme().then((t) => {
-      setThemeState(t);
-      setMounted(true);
-    });
+    const loadTheme = () => {
+      void getTheme().then((t) => {
+        setThemeState(t);
+        setMounted(true);
+      });
+    };
+
+    loadTheme();
+    window.addEventListener(SETTINGS_CHANGED_EVENT, loadTheme);
+    return () => {
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, loadTheme);
+    };
   }, []);
 
   const setTheme = async (value: Theme) => {

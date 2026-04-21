@@ -32,7 +32,7 @@ export async function setWeight(menuItemId: string, weight: number): Promise<voi
       })
     );
   }
-  scheduleProfileStateSync();
+  scheduleProfileStateSync({ collection: "personalWeights", key: menuItemId });
 }
 
 export async function getWeightsMap(menuItemIds: string[]): Promise<Record<string, number>> {
@@ -64,6 +64,6 @@ export async function deleteWeight(menuItemId: string): Promise<void> {
   const ids = rows.map((row) => row.id).filter((id): id is number => typeof id === "number");
   if (ids.length > 0) {
     await db.personalWeights.bulkDelete(ids);
-    scheduleProfileStateSync();
+    scheduleProfileStateSync({ collection: "personalWeights", key: menuItemId });
   }
 }

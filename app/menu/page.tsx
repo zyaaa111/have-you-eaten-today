@@ -141,7 +141,7 @@ export default function MenuPage() {
     const sub = syncEngine.subscribeToChanges(pullChangesSafely);
     void pullChangesSafely();
     return () => sub.unsubscribe();
-  }, []);
+  }, [user?.id]);
 
   const toggleTagFilter = (id: string) => {
     setSelectedTagIds((prev) =>

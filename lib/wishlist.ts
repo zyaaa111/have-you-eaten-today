@@ -17,7 +17,7 @@ export async function addWishId(menuItemId: string): Promise<void> {
         updatedAt: Date.now(),
       })
     );
-    scheduleProfileStateSync();
+    scheduleProfileStateSync({ collection: "wishes", key: menuItemId });
   }
 }
 
@@ -31,7 +31,7 @@ export async function removeWishId(menuItemId: string): Promise<void> {
   const ids = rows.map((row) => row.id).filter((id): id is number => typeof id === "number");
   if (ids.length > 0) {
     await db.wishes.bulkDelete(ids);
-    scheduleProfileStateSync();
+    scheduleProfileStateSync({ collection: "wishes", key: menuItemId });
   }
 }
 

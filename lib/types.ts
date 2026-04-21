@@ -221,6 +221,7 @@ export interface MenuGroupItem {
 export interface AppSettingRecord {
   key: string;
   value: unknown;
+  updatedAt?: number;
 }
 
 export interface AvoidanceRecord {
@@ -251,12 +252,14 @@ export interface FavoriteRecord {
 }
 
 export interface ProfileStateExport {
+  settings: AppSettingRecord[];
   avoidances: AvoidanceRecord[];
   wishes: WishRecord[];
   favorites: FavoriteRecord[];
   personalWeights: PersonalWeight[];
   menuGroups: MenuGroup[];
   menuGroupItems: MenuGroupItem[];
+  rollHistory: RollHistory[];
 }
 
 export interface AppExport {

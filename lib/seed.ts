@@ -68,102 +68,133 @@ function makeTemplateId(name: string) {
   return `seed-template-${name}`;
 }
 
+let activeSeed: Promise<void> | null = null;
+
 export async function seedDatabase() {
+  if (activeSeed) {
+    return activeSeed;
+  }
+
+  activeSeed = seedDatabaseInternal().finally(() => {
+    activeSeed = null;
+  });
+  return activeSeed;
+}
+
+async function seedDatabaseInternal() {
   if (getLocalIdentity()) {
     return;
   }
-  const tagCount = await db.tags.count();
-  if (tagCount === 0) {
-    const tagsToAdd: Tag[] = defaultTags.map((t) => ({
-      ...t,
-      id: makeTagId(t.name),
-      createdAt: Date.now(),
-      syncStatus: "local",
-      version: 1,
-    }));
-    await db.tags.bulkAdd(tagsToAdd);
 
-    // 绑定示例标签
-    const cuisineTags = tagsToAdd.filter((t) => t.type === "cuisine");
-    const categoryTags = tagsToAdd.filter((t) => t.type === "category");
-
-    const tagMap: Record<string, string[]> = {
-      番茄炒蛋: [cuisineTags.find((t) => t.name === "本帮菜")!.id, categoryTags.find((t) => t.name === "素菜")!.id],
-      香辣鸡腿堡: [categoryTags.find((t) => t.name === "小吃")!.id],
-      红烧肉: [cuisineTags.find((t) => t.name === "本帮菜")!.id, categoryTags.find((t) => t.name === "荤菜")!.id],
-    };
-
-    const menuItemsToAdd: MenuItem[] = defaultMenuItems.map((m) => ({
-      ...m,
-      id: makeMenuItemId(m.kind, m.name),
-      tags: tagMap[m.name] || [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      syncStatus: "local",
-      version: 1,
-    }));
-    await db.menuItems.bulkAdd(menuItemsToAdd);
-
-    const stapleTag = categoryTags.find((t) => t.name === "主食")!;
-    const meatTag = categoryTags.find((t) => t.name === "荤菜")!;
-    const vegTag = categoryTags.find((t) => t.name === "素菜")!;
-    const soupTag = categoryTags.find((t) => t.name === "汤")!;
-    const snackTag = categoryTags.find((t) => t.name === "小吃")!;
-    const drinkTag = categoryTags.find((t) => t.name === "饮料")!;
-    const dessertTag = categoryTags.find((t) => t.name === "甜品")!;
-
-    const defaultTemplates: Omit<ComboTemplate, "id" | "createdAt">[] = [
-      {
-        name: "1主食 + 1荤菜 + 1素菜",
-        isBuiltin: true,
-        rules: [
-          { count: 1, tagIds: [stapleTag.id] },
-          { count: 1, tagIds: [meatTag.id] },
-          { count: 1, tagIds: [vegTag.id] },
-        ],
-      },
-      {
-        name: "1汤 + 1主食",
-        isBuiltin: true,
-        rules: [
-          { count: 1, tagIds: [soupTag.id] },
-          { count: 1, tagIds: [stapleTag.id] },
-        ],
-      },
-      {
-        name: "2小吃 + 1饮料",
-        isBuiltin: true,
-        rules: [
-          { count: 2, tagIds: [snackTag.id] },
-          { count: 1, tagIds: [drinkTag.id] },
-        ],
-      },
-      {
-        name: "1荤菜 + 1素菜",
-        isBuiltin: true,
-        rules: [
-          { count: 1, tagIds: [meatTag.id] },
-          { count: 1, tagIds: [vegTag.id] },
-        ],
-      },
-      {
-        name: "1主食 + 1汤 + 1甜品",
-        isBuiltin: true,
-        rules: [
-          { count: 1, tagIds: [stapleTag.id] },
-          { count: 1, tagIds: [soupTag.id] },
-          { count: 1, tagIds: [dessertTag.id] },
-        ],
-      },
-    ];
-
-    const templatesToAdd: ComboTemplate[] = defaultTemplates.map((t) => ({
-      ...t,
-      id: makeTemplateId(t.name),
-      createdAt: Date.now(),
-      syncStatus: "local",
-      version: 1,
-    }));
-    await db.comboTemplates.bulkAdd(templatesToAdd);
+  const [tagCount, menuCount, templateCount] = await Promise.all([
+    db.tags.count(),
+    db.menuItems.count(),
+    db.comboTemplates.count(),
+  ]);
+  if (tagCount > 0 && menuCount > 0 && templateCount > 0) {
+    return;
   }
+  if (getLocalIdentity()) {
+    return;
+  }
+
+  const now = Date.now();
+  const tagsToAdd: Tag[] = defaultTags.map((t) => ({
+    ...t,
+    id: makeTagId(t.name),
+    createdAt: now,
+    syncStatus: "local",
+    version: 1,
+  }));
+
+  // 绑定示例标签
+  const cuisineTags = tagsToAdd.filter((t) => t.type === "cuisine");
+  const categoryTags = tagsToAdd.filter((t) => t.type === "category");
+
+  const tagMap: Record<string, string[]> = {
+    番茄炒蛋: [cuisineTags.find((t) => t.name === "本帮菜")!.id, categoryTags.find((t) => t.name === "素菜")!.id],
+    香辣鸡腿堡: [categoryTags.find((t) => t.name === "小吃")!.id],
+    红烧肉: [cuisineTags.find((t) => t.name === "本帮菜")!.id, categoryTags.find((t) => t.name === "荤菜")!.id],
+  };
+
+  const menuItemsToAdd: MenuItem[] = defaultMenuItems.map((m) => ({
+    ...m,
+    id: makeMenuItemId(m.kind, m.name),
+    tags: tagMap[m.name] || [],
+    createdAt: now,
+    updatedAt: now,
+    syncStatus: "local",
+    version: 1,
+  }));
+
+  const stapleTag = categoryTags.find((t) => t.name === "主食")!;
+  const meatTag = categoryTags.find((t) => t.name === "荤菜")!;
+  const vegTag = categoryTags.find((t) => t.name === "素菜")!;
+  const soupTag = categoryTags.find((t) => t.name === "汤")!;
+  const snackTag = categoryTags.find((t) => t.name === "小吃")!;
+  const drinkTag = categoryTags.find((t) => t.name === "饮料")!;
+  const dessertTag = categoryTags.find((t) => t.name === "甜品")!;
+
+  const defaultTemplates: Omit<ComboTemplate, "id" | "createdAt">[] = [
+    {
+      name: "1主食 + 1荤菜 + 1素菜",
+      isBuiltin: true,
+      rules: [
+        { count: 1, tagIds: [stapleTag.id] },
+        { count: 1, tagIds: [meatTag.id] },
+        { count: 1, tagIds: [vegTag.id] },
+      ],
+    },
+    {
+      name: "1汤 + 1主食",
+      isBuiltin: true,
+      rules: [
+        { count: 1, tagIds: [soupTag.id] },
+        { count: 1, tagIds: [stapleTag.id] },
+      ],
+    },
+    {
+      name: "2小吃 + 1饮料",
+      isBuiltin: true,
+      rules: [
+        { count: 2, tagIds: [snackTag.id] },
+        { count: 1, tagIds: [drinkTag.id] },
+      ],
+    },
+    {
+      name: "1荤菜 + 1素菜",
+      isBuiltin: true,
+      rules: [
+        { count: 1, tagIds: [meatTag.id] },
+        { count: 1, tagIds: [vegTag.id] },
+      ],
+    },
+    {
+      name: "1主食 + 1汤 + 1甜品",
+      isBuiltin: true,
+      rules: [
+        { count: 1, tagIds: [stapleTag.id] },
+        { count: 1, tagIds: [soupTag.id] },
+        { count: 1, tagIds: [dessertTag.id] },
+      ],
+    },
+  ];
+
+  const templatesToAdd: ComboTemplate[] = defaultTemplates.map((t) => ({
+    ...t,
+    id: makeTemplateId(t.name),
+    createdAt: now,
+    syncStatus: "local",
+    version: 1,
+  }));
+
+  await db.transaction("rw", [db.tags, db.menuItems, db.comboTemplates], async () => {
+    await db.tags.bulkPut(tagsToAdd);
+    if (menuCount === 0) {
+      await db.menuItems.bulkPut(menuItemsToAdd);
+    }
+    if (templateCount === 0) {
+      await db.comboTemplates.bulkPut(templatesToAdd);
+    }
+  });
 }

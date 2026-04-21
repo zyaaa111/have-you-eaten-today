@@ -25,6 +25,7 @@ interface ProfileSignalMaps {
   avoidCounts: Map<string, number>;
   wishCounts: Map<string, number>;
   weightTotals: Map<string, number>;
+  weightCounts: Map<string, number>;
 }
 
 function parseMenuItems(spaceId: string): MenuItem[] {
@@ -63,9 +64,10 @@ function getProfileSignals(spaceId: string, profileIds: string[]): ProfileSignal
   const avoidCounts = new Map<string, number>();
   const wishCounts = new Map<string, number>();
   const weightTotals = new Map<string, number>();
+  const weightCounts = new Map<string, number>();
 
   if (profileIds.length === 0) {
-    return { avoidCounts, wishCounts, weightTotals };
+    return { avoidCounts, wishCounts, weightTotals, weightCounts };
   }
 
   const placeholders = profileIds.map(() => "?").join(",");
@@ -93,9 +95,10 @@ function getProfileSignals(spaceId: string, profileIds: string[]): ProfileSignal
   }
   for (const row of weightRows) {
     weightTotals.set(row.menu_item_id, (weightTotals.get(row.menu_item_id) ?? 0) + Number(row.weight ?? 1));
+    weightCounts.set(row.menu_item_id, (weightCounts.get(row.menu_item_id) ?? 0) + 1);
   }
 
-  return { avoidCounts, wishCounts, weightTotals };
+  return { avoidCounts, wishCounts, weightTotals, weightCounts };
 }
 
 function getPublicHeatMaps(spaceId: string): {
@@ -137,7 +140,8 @@ export function getSharedRecommendations(options: SharedRecommendationOptions): 
     .map((item) => {
       const wishCount = signals.wishCounts.get(item.id) ?? 0;
       const weightTotal = signals.weightTotals.get(item.id) ?? 0;
-      const averageWeight = weightTotal > 0 ? weightTotal / participantCount : 1;
+      const explicitWeightCount = Math.min(signals.weightCounts.get(item.id) ?? 0, participantCount);
+      const averageWeight = (weightTotal + (participantCount - explicitWeightCount)) / participantCount;
       const likes = likeCountMap.get(item.id) ?? 0;
       const comments = commentCountMap.get(item.id) ?? 0;
       const penalty = penalties.get(item.id) ?? 0;
@@ -145,11 +149,11 @@ export function getSharedRecommendations(options: SharedRecommendationOptions): 
 
       let score = averageWeight * 2;
       if (averageWeight > 1) {
-        reasons.push(`${Math.min(wishCount || participantCount, participantCount)}/${participantCount} 成员偏好较高`);
+        reasons.push("成员平均偏好较高");
       }
       if (wishCount > 0) {
         score += wishCount * 2.5;
-        reasons.push("近期有人想吃");
+        reasons.push(`${wishCount}/${participantCount} 成员想吃`);
       }
       if (likes > 0) {
         score += likes;

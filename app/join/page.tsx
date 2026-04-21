@@ -8,6 +8,8 @@ import type { Space, Profile } from "@/lib/types";
 import { attachLocalDataToSpace, detachSpaceData } from "@/lib/space-ops";
 import { useAuth } from "@/components/auth-provider";
 import { bindLocalProfile } from "@/lib/auth-client";
+import { seedDatabase } from "@/lib/seed";
+import { syncEngine } from "@/lib/sync-engine";
 
 export default function JoinPage() {
   const router = useRouter();
@@ -72,6 +74,7 @@ export default function JoinPage() {
 
       saveLocalIdentity({ space, profile });
       await attachLocalDataToSpace(space.id, profile.id);
+      await syncAttachedLocalData();
       setHasIdentity(true);
       router.push("/menu");
     } catch (err) {
@@ -104,6 +107,7 @@ export default function JoinPage() {
     setLoading(true);
 
     try {
+      await seedDatabase();
       const res = await fetch(buildApiUrl("/spaces"), {
         method: "POST",
         credentials: "include",
@@ -127,6 +131,7 @@ export default function JoinPage() {
 
       saveLocalIdentity({ space, profile });
       await attachLocalDataToSpace(space.id, profile.id);
+      await syncAttachedLocalData();
       setHasIdentity(true);
       router.push("/menu");
     } catch (err) {
@@ -306,4 +311,15 @@ export default function JoinPage() {
       </div>
     </div>
   );
+}
+
+async function syncAttachedLocalData() {
+  try {
+    const result = await syncEngine.syncChanges();
+    if (!result.success) {
+      console.warn("Initial space sync did not fully complete:", result.error);
+    }
+  } catch (error) {
+    console.warn("Initial space sync failed:", error);
+  }
 }

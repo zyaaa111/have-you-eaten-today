@@ -27,7 +27,7 @@ export async function addAvoidance(menuItemId: string): Promise<void> {
         updatedAt: Date.now(),
       })
     );
-    scheduleProfileStateSync();
+    scheduleProfileStateSync({ collection: "avoidances", key: menuItemId });
   }
 }
 
@@ -41,7 +41,7 @@ export async function removeAvoidance(menuItemId: string): Promise<void> {
   const ids = rows.map((row) => row.id).filter((id): id is number => typeof id === "number");
   if (ids.length > 0) {
     await db.avoidances.bulkDelete(ids);
-    scheduleProfileStateSync();
+    scheduleProfileStateSync({ collection: "avoidances", key: menuItemId });
   }
 }
 

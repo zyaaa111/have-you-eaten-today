@@ -425,7 +425,8 @@ describe("http-sync-engine", () => {
 
     await engine.pushChanges();
 
-    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe("/api/sync/menu-items");
+    const urls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
+    expect(urls).toContain("/api/sync/menu-items");
   });
 
   it("should respect an explicit external API base for sync requests", async () => {
@@ -442,9 +443,8 @@ describe("http-sync-engine", () => {
 
     await engine.pushChanges();
 
-    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
-      "https://sync.example.com/api/sync/menu-items"
-    );
+    const urls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
+    expect(urls).toContain("https://sync.example.com/api/sync/menu-items");
   });
 
   it("should pull menu items from remote", async () => {

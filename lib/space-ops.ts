@@ -1,7 +1,7 @@
 import { db } from "./db";
 import type { MenuItem, Tag, ComboTemplate } from "./types";
 import { getLocalIdentity } from "./identity";
-import { scheduleProfileStateSync } from "./profile-state";
+import { scheduleProfileStateSync, type ProfileStateDirtyChange } from "./profile-state";
 
 export function getCurrentSpaceId(): string | undefined {
   return getLocalIdentity()?.space.id;
@@ -121,6 +121,7 @@ export async function updateMenuItem(id: string, changes: Partial<MenuItem>): Pr
 
 export async function deleteMenuItem(id: string): Promise<void> {
   const spaceId = getCurrentSpaceId();
+  const groupItems = await db.menuGroupItems.where({ menuItemId: id }).toArray();
   await db.transaction(
     "rw",
     [db.menuItems, db.personalWeights, db.avoidances, db.wishes, db.favorites, db.menuGroupItems, db.likes, db.comments, db.pendingDeletions],
@@ -143,7 +144,14 @@ export async function deleteMenuItem(id: string): Promise<void> {
     }
     }
   );
-  scheduleProfileStateSync();
+  const privateChanges: ProfileStateDirtyChange[] = [
+    { collection: "personalWeights", key: id },
+    { collection: "avoidances", key: id },
+    { collection: "wishes", key: id },
+    { collection: "favorites", key: id },
+    ...groupItems.map((item) => ({ collection: "menuGroupItems" as const, key: `${item.groupId}:${item.menuItemId}` })),
+  ];
+  scheduleProfileStateSync(privateChanges);
 }
 
 // Tags

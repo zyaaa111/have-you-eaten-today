@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { clearRollHistory, rollSingle, rollCombo } from "@/lib/roll";
+import { scheduleProfileStateSync } from "@/lib/profile-state";
 import { ChefHat, Bike, Trash2, Dices } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MenuItem } from "@/lib/types";
@@ -80,6 +81,7 @@ export default function HistoryPage() {
       const latest = todayRecords[0];
       const idsToDelete = todayRecords.map((r) => r.id);
       await db.rollHistory.bulkDelete(idsToDelete);
+      scheduleProfileStateSync(idsToDelete.map((id) => ({ collection: "rollHistory", key: id })));
 
       let result = null;
       if (latest.items.length > 1) {

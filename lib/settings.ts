@@ -1,5 +1,10 @@
 import { db } from "./db";
 import { AppSettings } from "./types";
+import { scheduleProfileStateSync } from "./profile-state";
+import {
+  isProfileSyncedSettingKey,
+  notifySettingsChanged,
+} from "./syncable-settings";
 
 const DEFAULT_SETTINGS: AppSettings = {
   defaultDedupDays: 7,
@@ -26,7 +31,11 @@ export async function saveSetting<K extends keyof AppSettings>(
 ): Promise<void>;
 export async function saveSetting<T>(key: string, value: T): Promise<void>;
 export async function saveSetting<T>(key: string, value: T): Promise<void> {
-  await db.settings.put({ key, value });
+  await db.settings.put({ key, value, updatedAt: Date.now() });
+  notifySettingsChanged();
+  if (isProfileSyncedSettingKey(key)) {
+    scheduleProfileStateSync({ collection: "settings", key });
+  }
 }
 
 export async function getDefaultDedupDays(): Promise<number> {

@@ -3,6 +3,8 @@ export type MenuItemKind = "recipe" | "takeout";
 export interface Ingredient {
   name: string;
   amount?: string;
+  quantity?: number;
+  unit?: string;
 }
 
 export interface RecipeStep {
@@ -61,6 +63,7 @@ export interface RolledItem {
   name: string;
   kind: MenuItemKind;
   shop?: string;
+  ingredientSnapshot?: Ingredient[];
 }
 
 export interface RollHistory {

@@ -202,4 +202,78 @@ describe("Roll Engine", () => {
     const baseline = trials / allItems.length;
     expect(targetHits).toBeGreaterThan(baseline);
   });
+
+  it("rollSingle populates ingredientSnapshot for recipe items", async () => {
+    await clearRollHistory();
+    // Seed data has "番茄炒蛋" and "红烧肉" with ingredients
+    const allItems = await db.menuItems.toArray();
+    const recipeWithIngredients = allItems.find(
+      (item) => item.kind === "recipe" && item.ingredients && item.ingredients.length > 0
+    );
+    if (!recipeWithIngredients) return;
+
+    // Force roll this specific item by avoiding all others
+    const otherIds = allItems.filter((i) => i.id !== recipeWithIngredients.id).map((i) => i.id);
+    for (const id of otherIds) {
+      await addAvoidance(id);
+    }
+
+    const result = await rollSingle({});
+    expect(result).not.toBeNull();
+    expect(result!.items[0].ingredientSnapshot).toBeDefined();
+    expect(result!.items[0].ingredientSnapshot!.length).toBeGreaterThan(0);
+  });
+
+  it("rollSingle does not populate ingredientSnapshot for takeout items", async () => {
+    await clearRollHistory();
+    // Add a takeout-only item and force roll it
+    const takeoutId = uuidv4();
+    await db.menuItems.add({
+      id: takeoutId,
+      kind: "takeout",
+      name: "外卖测试项",
+      tags: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      shop: "测试店",
+    });
+
+    // Avoid all other items
+    const allItems = await db.menuItems.toArray();
+    for (const item of allItems) {
+      if (item.id !== takeoutId) {
+        await addAvoidance(item.id);
+      }
+    }
+
+    const result = await rollSingle({});
+    expect(result).not.toBeNull();
+    expect(result!.items[0].kind).toBe("takeout");
+    expect(result!.items[0].ingredientSnapshot).toBeUndefined();
+  });
+
+  it("rollSingle recipe without ingredients has no ingredientSnapshot", async () => {
+    await clearRollHistory();
+    const noIngId = uuidv4();
+    await db.menuItems.add({
+      id: noIngId,
+      kind: "recipe",
+      name: "无材料菜谱",
+      tags: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    // Avoid all other items
+    const allItems = await db.menuItems.toArray();
+    for (const item of allItems) {
+      if (item.id !== noIngId) {
+        await addAvoidance(item.id);
+      }
+    }
+
+    const result = await rollSingle({});
+    expect(result).not.toBeNull();
+    expect(result!.items[0].ingredientSnapshot).toBeUndefined();
+  });
 });

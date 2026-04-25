@@ -5,10 +5,11 @@ import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { clearRollHistory, rollSingle, rollCombo } from "@/lib/roll";
 import { scheduleProfileStateSync } from "@/lib/profile-state";
-import { ChefHat, Bike, Trash2, Dices } from "lucide-react";
+import { ChefHat, Bike, Trash2, Dices, ShoppingBasket } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MenuItem } from "@/lib/types";
+import { MenuItem, RolledItem } from "@/lib/types";
 import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
+import { IngredientSummaryDialog } from "@/components/ingredient-summary-dialog";
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -47,6 +48,9 @@ export default function HistoryPage() {
   const [replacing, setReplacing] = useState(false);
   const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [ingredientItems, setIngredientItems] = useState<RolledItem[] | null>(null);
+  const [ingredientRolledAt, setIngredientRolledAt] = useState(0);
+  const [ingredientOpen, setIngredientOpen] = useState(false);
 
   const handleItemClick = async (menuItemId: string, name: string) => {
     const item = await db.menuItems.get(menuItemId);
@@ -167,6 +171,20 @@ export default function HistoryPage() {
 
                       <div className="text-sm font-medium">{record.ruleSnapshot}</div>
 
+                      {record.items.some((item) => item.kind === "recipe") && (
+                        <button
+                          onClick={() => {
+                            setIngredientItems(record.items);
+                            setIngredientRolledAt(record.rolledAt);
+                            setIngredientOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          <ShoppingBasket className="w-3 h-3" />
+                          材料清单
+                        </button>
+                      )}
+
                       <div className="flex flex-wrap gap-2">
                         {record.items.map((item, idx) => (
                           <button
@@ -204,6 +222,13 @@ export default function HistoryPage() {
         item={detailItem}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+      />
+
+      <IngredientSummaryDialog
+        open={ingredientOpen}
+        onClose={() => setIngredientOpen(false)}
+        items={ingredientItems ?? []}
+        rolledAt={ingredientRolledAt}
       />
     </div>
   );

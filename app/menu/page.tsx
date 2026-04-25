@@ -14,7 +14,8 @@ import { getWeightsMap } from "@/lib/weights";
 import { syncEngine } from "@/lib/sync-engine";
 import { getLikesCountByMenuItems } from "@/lib/likes";
 import { getCommentsCountByMenuItems } from "@/lib/comments";
-import { Plus, Search, ChefHat, Bike, Tag as TagIcon, Heart, Trash2, X, Ban, ThumbsUp, MessageCircle } from "lucide-react";
+import { Plus, Search, ChefHat, Bike, Tag as TagIcon, Heart, Trash2, X, Ban, ThumbsUp, MessageCircle, Upload } from "lucide-react";
+import { MenuImportDialog } from "@/components/menu-import-dialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 
@@ -51,6 +52,7 @@ export default function MenuPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortField, setSortField] = useState<"default" | "likeCount" | "commentCount">("default");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     getWishIds().then(setWishIds);
@@ -204,13 +206,22 @@ export default function MenuPage() {
             {batchMode ? "完成" : "批量管理"}
           </button>
           {!batchMode && (
-            <button
-              onClick={handleAdd}
-              className="inline-flex items-center justify-center gap-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="w-4 h-4" />
-              新增菜单项
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAdd}
+                className="inline-flex items-center justify-center gap-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <Plus className="w-4 h-4" />
+                新增菜单项
+              </button>
+              <button
+                onClick={() => setImportOpen(true)}
+                className="inline-flex items-center justify-center gap-1 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted transition"
+              >
+                <Upload className="w-4 h-4" />
+                批量导入
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -517,6 +528,8 @@ export default function MenuPage() {
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
+
+      <MenuImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }

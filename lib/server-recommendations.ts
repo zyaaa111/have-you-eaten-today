@@ -196,6 +196,10 @@ function toRolledItem(item: MenuItem): RolledItem {
     name: item.name,
     kind: item.kind,
     shop: item.shop,
+    ingredientSnapshot:
+      item.kind === "recipe" && item.ingredients && item.ingredients.length > 0
+        ? item.ingredients.map(({ name, amount, quantity, unit }) => ({ name, amount, quantity, unit }))
+        : undefined,
   };
 }
 

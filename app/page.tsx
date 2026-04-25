@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChefHat, Bike, Dices } from "lucide-react";
+import { ChefHat, Bike, Dices, ShoppingBasket } from "lucide-react";
 import { useLiveQuery } from "@/lib/use-live-query";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { MenuItem } from "@/lib/types";
+import { MenuItem, RolledItem } from "@/lib/types";
 import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
+import { IngredientSummaryDialog } from "@/components/ingredient-summary-dialog";
 import { getLocalIdentity } from "@/lib/identity";
 import { getRecommendations } from "@/lib/recommendations";
 import { getFavoriteIds } from "@/lib/favorites";
@@ -29,6 +30,9 @@ export default function Home() {
   const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [identity, setIdentity] = useState<ReturnType<typeof getLocalIdentity>>(null);
+  const [ingredientItems, setIngredientItems] = useState<RolledItem[] | null>(null);
+  const [ingredientRolledAt, setIngredientRolledAt] = useState(0);
+  const [ingredientOpen, setIngredientOpen] = useState(false);
 
   const menuItems = useLiveQuery(() => db.menuItems.toArray(), []) || [];
   const latestHistory = useLiveQuery(
@@ -97,13 +101,26 @@ export default function Home() {
               <div className="text-sm font-medium text-muted-foreground">
                 最近抽中 · {relativeTime(latestHistory.rolledAt)}
               </div>
-              <Link
-                href={`/random?kind=${firstItem.kind}`}
-                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-              >
-                <Dices className="w-4 h-4" />
-                再抽一次
-              </Link>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setIngredientItems(latestHistory.items);
+                    setIngredientRolledAt(latestHistory.rolledAt);
+                    setIngredientOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                >
+                  <ShoppingBasket className="w-4 h-4" />
+                  材料清单
+                </button>
+                <Link
+                  href={`/random?kind=${firstItem.kind}`}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                >
+                  <Dices className="w-4 h-4" />
+                  再抽一次
+                </Link>
+              </div>
             </div>
 
             <div
@@ -227,6 +244,13 @@ export default function Home() {
         item={detailItem}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+      />
+
+      <IngredientSummaryDialog
+        open={ingredientOpen}
+        onClose={() => setIngredientOpen(false)}
+        items={ingredientItems ?? []}
+        rolledAt={ingredientRolledAt}
       />
     </div>
   );

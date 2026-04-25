@@ -42,10 +42,17 @@ function toIngredients(value: unknown): Ingredient[] | undefined {
 
   return parsed.reduce<Ingredient[]>((items, item) => {
     if (!isRecord(item) || typeof item.name !== "string") return items;
-    items.push({
+    const ingredient: Ingredient = {
       name: item.name,
       amount: typeof item.amount === "string" && item.amount.length > 0 ? item.amount : undefined,
-    });
+    };
+    if (typeof item.quantity === "number" && Number.isFinite(item.quantity)) {
+      ingredient.quantity = item.quantity;
+    }
+    if (typeof item.unit === "string" && item.unit.length > 0) {
+      ingredient.unit = item.unit;
+    }
+    items.push(ingredient);
     return items;
   }, []);
 }

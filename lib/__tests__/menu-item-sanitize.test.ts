@@ -48,4 +48,36 @@ describe("menu item sanitize helpers", () => {
     expect(payload.steps).toBeUndefined();
     expect(payload.tips).toBeUndefined();
   });
+
+  it("should preserve quantity and unit fields in ingredients", () => {
+    const snapshot = sanitizeMenuItemSnapshot({
+      id: "menu_1",
+      kind: "recipe",
+      name: "红烧肉",
+      ingredients: [
+        { name: "五花肉", amount: "500g", quantity: 500, unit: "g" },
+        { name: "冰糖", amount: "30g", quantity: 30, unit: "g" },
+      ],
+    });
+
+    expect(snapshot?.ingredients).toEqual([
+      { name: "五花肉", amount: "500g", quantity: 500, unit: "g" },
+      { name: "冰糖", amount: "30g", quantity: 30, unit: "g" },
+    ]);
+  });
+
+  it("should preserve quantity without unit in ingredients", () => {
+    const snapshot = sanitizeMenuItemSnapshot({
+      id: "menu_1",
+      kind: "recipe",
+      name: "简单菜",
+      ingredients: [
+        { name: "鸡蛋", quantity: 3 },
+      ],
+    });
+
+    expect(snapshot?.ingredients).toEqual([
+      { name: "鸡蛋", quantity: 3 },
+    ]);
+  });
 });

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { db } from "./db";
-import { MenuItem, MenuItemKind, RolledItem, ComboTemplate } from "./types";
+import { MenuItem, MenuItemKind, RolledItem, ComboTemplate, Ingredient } from "./types";
 import { getDefaultDedupDays, getDedupEnabled } from "./settings";
 import { getWishIds } from "./wishlist";
 import { getAvoidedIds } from "./avoidances";
@@ -76,6 +76,14 @@ function buildSingleRuleSnapshot(opts: SingleRollOptions): string {
   return parts.join(" · ");
 }
 
+function buildIngredientSnapshot(item: MenuItem): Ingredient[] | undefined {
+  if (item.kind !== "recipe") return undefined;
+  if (!item.ingredients || item.ingredients.length === 0) return undefined;
+  return item.ingredients.map(({ name, amount, quantity, unit }) => ({
+    name, amount, quantity, unit,
+  }));
+}
+
 export async function rollSingle(opts: SingleRollOptions): Promise<RollResult | null> {
   const allItems = await db.menuItems.toArray();
   let candidates = filterMenuItems(allItems, opts.kind, opts.tagIds);
@@ -109,6 +117,7 @@ export async function rollSingle(opts: SingleRollOptions): Promise<RollResult | 
     name: picked.name,
     kind: picked.kind,
     shop: picked.shop,
+    ingredientSnapshot: buildIngredientSnapshot(picked),
   };
 
   const result: RollResult = {
@@ -181,6 +190,7 @@ export async function rollCombo(opts: ComboRollOptions): Promise<RollResult | nu
         name: picked.name,
         kind: picked.kind,
         shop: picked.shop,
+        ingredientSnapshot: buildIngredientSnapshot(picked),
       });
       boostedCandidates = boostedCandidates.filter((c) => c.id !== picked.id);
     }

@@ -11,13 +11,14 @@ import { MenuItemDetailDialog } from "@/components/menu-item-detail-dialog";
 import { getRecommendations, type RecommendationItem } from "@/lib/recommendations";
 import { scheduleProfileStateSync } from "@/lib/profile-state";
 import { MenuItemFormDialog } from "@/components/menu-item-form-dialog";
-import { ChefHat, Bike, Dices, Layers } from "lucide-react";
+import { ChefHat, Bike, Dices, Layers, ShoppingBasket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getLocalIdentity } from "@/lib/identity";
 import { useAuth } from "@/components/auth-provider";
 import { syncEngine } from "@/lib/sync-engine";
 import { buildApiUrl } from "@/lib/api-base";
 import { SETTINGS_CHANGED_EVENT } from "@/lib/syncable-settings";
+import { IngredientSummaryDialog } from "@/components/ingredient-summary-dialog";
 
 const typeLabels: Record<TagType, string> = {
   cuisine: "菜系",
@@ -67,6 +68,8 @@ export default function RandomPage() {
   const [dedupEnabled, setDedupEnabled] = useState<boolean>(true);
   const [sharedRecommendations, setSharedRecommendations] = useState<RecommendationItem[]>([]);
   const [sharedRecommendationsLoading, setSharedRecommendationsLoading] = useState(false);
+  const [ingredientDialogOpen, setIngredientDialogOpen] = useState(false);
+  const [resultTimestamp, setResultTimestamp] = useState<number>(0);
 
   const shuffleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const activeScopeKey = identity ? `profile:${identity.profile.id}:${identity.space.id}` : "local";
@@ -108,6 +111,8 @@ export default function RandomPage() {
   ) ?? [];
 
   const recommendations = identity && user && selectedMemberIds.length > 1 ? sharedRecommendations : localRecommendations;
+  const hasIngredientSummary =
+    result?.items.some((item) => item.kind === "recipe" && item.ingredientSnapshot && item.ingredientSnapshot.length > 0) ?? false;
 
   useEffect(() => {
     let active = true;
@@ -302,11 +307,21 @@ export default function RandomPage() {
           throw new Error(`HTTP ${response.status}`);
         }
         nextResult = (await response.json()) as RollResult;
+        const enrichedItems = nextResult.items.map((ri) => {
+          if (ri.ingredientSnapshot) return ri;
+          if (ri.kind !== "recipe") return ri;
+          const local = menuItems.find((mi) => mi.id === ri.menuItemId);
+          if (!local?.ingredients?.length) return ri;
+          return {
+            ...ri,
+            ingredientSnapshot: local.ingredients.map(({ name, amount, quantity, unit }) => ({ name, amount, quantity, unit })),
+          };
+        });
         const historyId = crypto.randomUUID();
         await db.rollHistory.add({
           id: historyId,
           rolledAt: Date.now(),
-          items: nextResult.items,
+          items: enrichedItems,
           ruleSnapshot: nextResult.ruleSnapshot,
           ignoredDedup: nextResult.ignoredDedup,
         });
@@ -335,6 +350,7 @@ export default function RandomPage() {
 
       stopShuffle();
       setResult(nextResult);
+      setResultTimestamp(Date.now());
     } finally {
       stopShuffle();
       setRolling(false);
@@ -667,6 +683,18 @@ export default function RandomPage() {
                   <Dices className="w-4 h-4" />
                   再抽一次
                 </button>
+                <button
+                  onClick={() => setIngredientDialogOpen(true)}
+                  disabled={!hasIngredientSummary}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-md border px-4 py-2 text-sm font-medium transition",
+                    hasIngredientSummary ? "hover:bg-muted active:scale-95" : "opacity-50 cursor-not-allowed"
+                  )}
+                  title={hasIngredientSummary ? undefined : "当前结果没有菜谱材料"}
+                >
+                  <ShoppingBasket className="w-4 h-4" />
+                  查看材料清单
+                </button>
               </div>
             )}
           </div>
@@ -676,6 +704,14 @@ export default function RandomPage() {
       {!result && !rolling && <div className="text-center text-sm text-muted-foreground">当前菜单共 {menuItems.length} 项，准备好就开始吧！</div>}
 
       <MenuItemDetailDialog item={detailItem} open={detailOpen} onOpenChange={setDetailOpen} onEdit={handleEdit} onDelete={handleDelete} />
+
+      <IngredientSummaryDialog
+        open={ingredientDialogOpen}
+        onClose={() => setIngredientDialogOpen(false)}
+        items={result?.items ?? []}
+        rolledAt={resultTimestamp}
+        menuItems={menuItems}
+      />
 
       <MenuItemFormDialog
         open={formOpen}
